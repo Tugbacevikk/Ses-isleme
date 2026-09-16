@@ -1,5 +1,6 @@
 import uuid
 import os
+from pathlib import Path
 from typing import Dict, Any, List
 from dotenv import load_dotenv
 
@@ -136,7 +137,6 @@ def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
         db.close()
 
 
-from pathlib import Path
 from fastapi.security import APIKeyHeader
 from typing import Optional
 
