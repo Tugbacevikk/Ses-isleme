@@ -16,7 +16,7 @@ class JobService:
         self,
         storage: IAudioStorage,
         repository: ITranscriptRepository,
-        pipeline: AudioAnalysisPipeline,
+        pipeline: Optional[AudioAnalysisPipeline] = None,
     ):
         self.storage = storage
         self.repo = repository
@@ -55,6 +55,10 @@ class JobService:
             local_audio_path = self.storage.get_path(record.storage_uri)
             
             # Pipeline çalıştır
+            if self.pipeline is None:
+                from audio_analyzer.services.pipeline_factory import get_shared_pipeline
+                self.pipeline = get_shared_pipeline()
+
             utterances, language = self.pipeline.process(local_audio_path)
 
             # Başarılı ise sonuçları ve dili kaydet (COMPLETED)

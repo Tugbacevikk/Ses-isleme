@@ -338,7 +338,14 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error('Dosya yükleme başarısız!');
+                    const errData = await response.json().catch(() => ({}));
+                    let msg = 'Dosya yükleme başarısız!';
+                    if (typeof errData.detail === 'string') {
+                        msg = errData.detail;
+                    } else if (Array.isArray(errData.detail)) {
+                        msg = errData.detail.map(d => d.msg || JSON.stringify(d)).join(', ');
+                    }
+                    throw new Error(msg);
                 }
 
                 const data = await response.json();
