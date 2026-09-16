@@ -12,6 +12,11 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-dotenv>=1.0.0",
+    "soundfile>=0.12.1",
+    "speechbrain>=0.5.16",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
     "sqlalchemy>=2.0.25",
@@ -36,6 +41,10 @@ dev = [
     "isort>=5.13.0",
     "mypy>=1.8.0",
 ]
+
+[project.scripts]
+audio-analyzer-api = "audio_analyzer.api.main:start"
+audio-analyzer-cli = "run_analysis:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

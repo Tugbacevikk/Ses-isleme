@@ -46,11 +46,19 @@ class AudioAnalysisPipeline:
             )
 
         # 2. VAD ile konuşma ve sessizlik aralıklarını çıkarma
+        speech_timestamps: Optional[List[Tuple[float, float]]] = None
         if self.vad_processor:
-            _ = self.vad_processor.get_speech_timestamps(working_path)
+            try:
+                speech_timestamps = self.vad_processor.get_speech_timestamps(working_path)
+            except Exception as e:
+                print(f"[UYARI] VAD İşleme Hatası: {e}. VAD filtresi atlanıyor.")
 
         # 3. STT ile kelime seviyesi metin çıkarma ve dil tespiti
         words, detected_language = self.stt_engine.transcribe(working_path)
+
+        # 3b. VAD Filtrelemesi: Sessizlik alanlarında türetilen STT halüsinasyonlarını temizle
+        if speech_timestamps and words:
+            words = self._filter_words_with_vad(words, speech_timestamps)
 
         # 4. Derin konuşmacı zaman aralıkları çıkarma
         diarization_segments = self.diarizer.diarize(working_path)
@@ -62,3 +70,25 @@ class AudioAnalysisPipeline:
         final_utterances = self.semantic_refiner.refine(raw_utterances)
 
         return final_utterances, detected_language
+
+    def _filter_words_with_vad(
+        self, words: List, speech_timestamps: List[Tuple[float, float]], tolerance: float = 0.3
+    ) -> List:
+        """
+        VAD konuşma aralıklarının tamamen dışında kalan (sessizlikte türetilmiş)
+        STT kelime halüsinasyonlarını eler.
+        """
+        if not speech_timestamps:
+            return words
+
+        filtered_words = []
+        for word in words:
+            # Kelimenin orta noktası veya aralığı herhangi bir VAD konuşma segmentine düşüyor mu?
+            is_speech = any(
+                (start - tolerance) <= word.midpoint <= (end + tolerance)
+                for start, end in speech_timestamps
+            )
+            if is_speech:
+                filtered_words.append(word)
+
+        return filtered_words

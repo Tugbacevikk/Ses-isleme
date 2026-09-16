@@ -77,15 +77,13 @@ def main():
     print(f"      - GPU İndeksi               : {device_config.device_index}")
 
     # 2. Veritabanı ve Klasör Kurulumu
-    db_path = Path("storage/dev_database.db")
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    engine = create_engine(f"sqlite:///{db_path.as_posix()}", echo=False)
+    database_url = os.getenv("DATABASE_URL", "sqlite:///storage/dev_database.db")
+    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+    engine = create_engine(database_url, echo=False, connect_args=connect_args)
     Base.metadata.create_all(bind=engine)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    session = SessionLocal()
     print(f"\n[2/5] VERİTABANI İŞLEMLERİ:")
-    print(f"      - SQLite Veritabanı         : {db_path.absolute()}")
+    print(f"      - Veritabanı URL           : {database_url}")
     print(f"      - Veritabanı Tabloları      : audio_records, transcript_utterances [HAZIR]")
 
     # 3. Ses Dosyası Hazırlığı
@@ -112,14 +110,17 @@ def main():
 
     # 4.1 STT Engine (FasterWhisper)
     try:
-        import faster_whisper
         from audio_analyzer.adapters.stt.faster_whisper_adapter import FasterWhisperAdapter
         stt_engine = FasterWhisperAdapter(model_size="small", device_config=device_config)
         print("      - STT Engine (FasterWhisper): [GERÇEK GERÇEK ZAMANLI AI MODELİ AKTİF - Small Model]")
     except Exception as e:
-        print(f"      - STT Engine               : [DEMO MOCK STT AKTİF - {e}]")
-        from tests.system.test_full_pipeline import MockSTTEngine
-        stt_engine = MockSTTEngine()
+        allow_mock = os.getenv("ALLOW_MOCK_STT", "false").lower() == "true"
+        if allow_mock:
+            print(f"      - STT Engine               : [DEMO MOCK STT AKTİF - ALLOW_MOCK_STT=true - {e}]")
+            from audio_analyzer.adapters.stt.mock_stt_adapter import MockSTTAdapter
+            stt_engine = MockSTTAdapter()
+        else:
+            raise RuntimeError(f"STT Motoru (FasterWhisper) yüklenemedi: {e}. Lütfen faster-whisper bağımlılığını veya ALLOW_MOCK_STT=true ayarını kontrol edin.")
 
     # 4.2 Diarization Engine (SpeechBrain ECAPA-TDNN %100 Çevrimdışı Derin Sinir Ağı)
     try:

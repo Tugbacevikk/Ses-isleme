@@ -1,12 +1,16 @@
+import logging
 from typing import List, Optional
 from audio_analyzer.domain.interfaces import IDiarizer
 from audio_analyzer.domain.models import DiarizationSegment, DeviceConfig
+
+logger = logging.getLogger(__name__)
 
 
 class PyAnnoteAdapter(IDiarizer):
     """
     PyAnnote.audio Speaker Diarization Motor Adaptörü.
     Donanım bilincine (DeviceConfig) sahiptir.
+    Hata oluştuğunda istisnayı fırlatır ve loglar; sessizce başka adaptör import etmez (Clean Architecture).
     """
 
     def __init__(
@@ -41,6 +45,9 @@ class PyAnnoteAdapter(IDiarizer):
                 raise ImportError(
                     "pyannote.audio kütüphanesi yüklü değil. 'pip install pyannote.audio' çalıştırın."
                 )
+            except Exception as e:
+                logger.error(f"PyAnnote model yükleme hatası: {e}")
+                raise RuntimeError(f"PyAnnote model yüklenemedi: {e}")
 
     def diarize(self, audio_path: str) -> List[DiarizationSegment]:
         try:
@@ -59,6 +66,5 @@ class PyAnnoteAdapter(IDiarizer):
 
             return segments
         except Exception as e:
-            print(f"PyAnnoteAdapter error: {e}. Fallback to SpeechBrainECAPADiarizer.")
-            from audio_analyzer.adapters.diarization.speechbrain_adapter import SpeechBrainECAPADiarizer
-            return SpeechBrainECAPADiarizer(device_config=self.device_config).diarize(audio_path)
+            logger.error(f"PyAnnote Diarization başarısız: {e}")
+            raise RuntimeError(f"PyAnnote Diarization çalıştırılamadı: {e}")

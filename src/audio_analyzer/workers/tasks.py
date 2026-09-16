@@ -37,30 +37,12 @@ def process_audio_task(self, record_id_str: str) -> Dict[str, Any]:
     session = get_db_session()
 
     try:
-        # 1. Donanım Sezgisel Seçimi (GPU varsa CUDA+float16, yoksa CPU+int8)
-        device_config = DeviceConfig()
-
-        # 2. Bağımlılıkların Oluşturulması (Dependency Injection)
+        # 1. Depo ve Sıcak Yüklenmiş (Warm-loaded) Singleton AI Pipeline
         storage = LocalStorageAdapter(base_dir="storage/raw")
         repository = PostgresRepository(session=session)
         
-        stt_engine = FasterWhisperAdapter(
-            model_size="medium",
-            device_config=device_config,
-        )
-        diarizer = PyAnnoteAdapter(
-            auth_token=os.getenv("HF_TOKEN"),
-            device_config=device_config,
-        )
-        
-        from audio_analyzer.adapters.audio.audio_converter import AudioConverterProcessor
-        audio_processor = AudioConverterProcessor()
-
-        pipeline = AudioAnalysisPipeline(
-            stt_engine=stt_engine,
-            diarizer=diarizer,
-            audio_processor=audio_processor,
-        )
+        from audio_analyzer.services.pipeline_factory import get_shared_pipeline
+        pipeline = get_shared_pipeline()
 
 
         job_service = JobService(

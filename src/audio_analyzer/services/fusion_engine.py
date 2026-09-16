@@ -13,7 +13,7 @@ class FusionEngine:
     birleştiren ve çakışma/sessizlik kurallarını uygulayan hizalama motoru.
     """
 
-    def __init__(self, max_silence_threshold: float = 3.0):
+    def __init__(self, max_silence_threshold: float = 1.5):
         """
         :param max_silence_threshold: Aynı konuşmacı bu süreden (saniye) fazla susarsa yeni paragraf başlatır.
         """
@@ -134,66 +134,3 @@ class FusionEngine:
                 smoothed[i] = (smoothed[i][0], prev_spk)
 
         return smoothed
-
-    def _apply_semantic_refinement(
-        self, utterances: List[TranscriptUtterance]
-    ) -> List[TranscriptUtterance]:
-        """
-        Görüşme metnini anlamsal düzleme oturtarak ses ayrıştırma hatası nedeniyle 
-        birleşmiş cümle bloklarını tespit eder ve doğru konuşmacıya böler.
-        """
-        agent_triggers = [
-            "anladım hanımefendi",
-            "anladım beyefendi",
-            "şikayetinizi not aldım",
-            "size yardımcı olabilirim",
-            "geri dönüş yapacağız",
-            "gerekli adımları atacağız",
-            "müşteri hizmetleri",
-        ]
-
-        refined: List[TranscriptUtterance] = []
-
-        for utt in utterances:
-            text_lower = utt.text.lower()
-
-            # Bloğun içinde müşteri temsilcisi kapanış cümlesi geçiyorsa ama müşteri bloğuna yapışmışsa
-            split_idx = -1
-            found_trigger = None
-
-            for trigger in agent_triggers:
-                if trigger in text_lower and not text_lower.startswith(trigger):
-                    split_idx = text_lower.find(trigger)
-                    found_trigger = trigger
-                    break
-
-            if split_idx > 0 and found_trigger:
-                part1_text = utt.text[:split_idx].strip()
-                part2_text = utt.text[split_idx:].strip()
-
-                if part1_text and part2_text:
-                    total_chars = len(utt.text)
-                    part1_ratio = len(part1_text) / total_chars
-                    mid_time = round(utt.start_time + (utt.end_time - utt.start_time) * part1_ratio, 2)
-
-                    utt1 = TranscriptUtterance(
-                        id=uuid.uuid4(),
-                        speaker_id=utt.speaker_id,
-                        start_time=utt.start_time,
-                        end_time=mid_time,
-                        text=part1_text,
-                    )
-                    other_spk = "SPEAKER_00" if utt.speaker_id != "SPEAKER_00" else "SPEAKER_01"
-                    utt2 = TranscriptUtterance(
-                        id=uuid.uuid4(),
-                        speaker_id=other_spk,
-                        start_time=mid_time,
-                        end_time=utt.end_time,
-                        text=part2_text,
-                    )
-                    refined.extend([utt1, utt2])
-                    continue
-
-            refined.append(utt)
-
-        return refined
