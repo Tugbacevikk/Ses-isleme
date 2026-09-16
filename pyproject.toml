@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "audio-analyzer"
+version = "0.1.0"
+description = "High-performance Audio Analysis (STT + Speaker Diarization) System"
+authors = [
+    { name = "Engineers", email = "engineer@example.com" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "sqlalchemy>=2.0.25",
+    "alembic>=1.13.1",
+    "psycopg2-binary>=2.9.9",
+    "celery>=5.3.6",
+    "redis>=5.0.1",
+    "numpy>=1.24.0",
+    "scipy>=1.11.0",
+    "torch>=2.1.0",
+    "faster-whisper>=1.0.0",
+    "pyannote.audio>=3.1.0",
+    "python-multipart>=0.0.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "black>=24.1.0",
+    "isort>=5.13.0",
+    "mypy>=1.8.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "system: End-to-end system tests",
+    "benchmark: Performance benchmark tests",
+]

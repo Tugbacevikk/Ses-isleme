@@ -1,0 +1,13 @@
+[package]
+name = "native_audio_dsp"
+version = "0.1.0"
+edition = "2021"
+authors = ["Audio Analyzer Engineering Team"]
+description = "High-performance Rust Audio DSP & VAD Accelerator Module for Python via PyO3"
+
+[lib]
+name = "native_audio_dsp"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.20.0", features = ["extension-module"] }

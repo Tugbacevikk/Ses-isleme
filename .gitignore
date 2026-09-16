@@ -1,0 +1,45 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Environment Variables & Tokens (CRITICAL SECURITY)
+.env
+.env.local
+.env.*.local
+
+# Storage & Databases
+storage/dev_database.db
+storage/raw/*
+!storage/raw/.gitkeep
+storage/models/*
+!storage/models/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+
+# Audio Files & Temporary Data
+*.mp3
+*.wav
+*.m4a
+*.flac
+*.ogg
+scratch/
+
+# Python & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.dist/
+build/
+
+# IDE & System
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
