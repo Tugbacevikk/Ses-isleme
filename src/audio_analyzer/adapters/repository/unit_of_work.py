@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session, sessionmaker
-from audio_analyzer.domain.interfaces import IUnitOfWork
+
 from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
+from audio_analyzer.domain.interfaces import IUnitOfWork
 
 
 class SqlAlchemyUnitOfWork(IUnitOfWork):

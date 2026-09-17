@@ -1,4 +1,5 @@
 import os
+
 from celery import Celery
 
 # Redis Broker ve Result Backend bağlantı URL'si (Ortam değişkeninden veya varsayılan yerel adresten alır)

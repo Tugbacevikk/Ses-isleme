@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Float, Integer, Text, DateTime, ForeignKey, Index, Uuid, func
+
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, Uuid, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -11,6 +12,7 @@ def utc_now() -> datetime:
 
 class Base(DeclarativeBase):
     """SQLAlchemy ORM modelleri için temel sınıf."""
+
     pass
 
 
@@ -19,6 +21,7 @@ class AudioRecordModel(Base):
     Ses Kaydı Veritabanı Tablosu.
     PostgreSQL'de native UUID, SQLite'ta CHAR(32) olarak derlenir (Dialect-Agnostic).
     """
+
     __tablename__ = "audio_records"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -47,6 +50,7 @@ class TranscriptUtteranceModel(Base):
     """
     Zaman Damgalı Konuşmacı Cümleleri Veritabanı Tablosu.
     """
+
     __tablename__ = "transcript_utterances"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)

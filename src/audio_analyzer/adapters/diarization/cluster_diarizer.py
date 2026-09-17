@@ -1,8 +1,10 @@
 import logging
-import numpy as np
 from typing import List
+
+import numpy as np
+
 from audio_analyzer.domain.interfaces import IDiarizer
-from audio_analyzer.domain.models import DiarizationSegment, DeviceConfig
+from audio_analyzer.domain.models import DeviceConfig, DiarizationSegment
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,7 @@ class LocalSpectralClusterDiarizer(IDiarizer):
         sum_mag = np.sum(fft_mag)
         centroid = np.sum(freqs * fft_mag) / (sum_mag + 1e-6) if sum_mag > 0 else 0.0
 
-        corr = np.correlate(window, window, mode='full')
+        corr = np.correlate(window, window, mode="full")
         corr = corr[len(corr) // 2 :]
 
         min_lag = int(sr / 350.0)  # ~350 Hz
@@ -42,10 +44,12 @@ class LocalSpectralClusterDiarizer(IDiarizer):
 
         return pitch, centroid
 
-    def _extract_features(self, signal: np.ndarray, sr: int, num_coefficients: int = 13) -> np.ndarray:
+    def _extract_features(
+        self, signal: np.ndarray, sr: int, num_coefficients: int = 13
+    ) -> np.ndarray:
         """Sesteki vokal tınılarını ve Delta özniteliklerini hesaplar."""
         frame_len = int(sr * 0.025)  # 25ms
-        frame_step = int(sr * 0.010) # 10ms
+        frame_step = int(sr * 0.010)  # 10ms
 
         signal_length = len(signal)
         if signal_length < frame_len:
@@ -56,15 +60,16 @@ class LocalSpectralClusterDiarizer(IDiarizer):
         z = np.zeros((pad_signal_length - signal_length))
         pad_signal = np.append(signal, z)
 
-        indices = np.tile(np.arange(0, frame_len), (num_frames, 1)) + np.tile(
-            np.arange(0, num_frames * frame_step, frame_step), (frame_len, 1)
-        ).T
+        indices = (
+            np.tile(np.arange(0, frame_len), (num_frames, 1))
+            + np.tile(np.arange(0, num_frames * frame_step, frame_step), (frame_len, 1)).T
+        )
         frames = pad_signal[indices.astype(np.int32, copy=False)]
         frames *= np.hamming(frame_len)
 
         nfft = 512
         mag_frames = np.absolute(np.fft.rfft(frames, nfft))
-        pow_frames = ((1.0 / nfft) * (mag_frames ** 2))
+        pow_frames = (1.0 / nfft) * (mag_frames**2)
 
         low_freq_mel = 0
         high_freq_mel = 2595 * np.log10(1 + (sr / 2) / 700)
@@ -96,7 +101,9 @@ class LocalSpectralClusterDiarizer(IDiarizer):
         delta_mfcc = np.gradient(mfcc, axis=0) if len(mfcc) > 2 else np.zeros_like(mfcc)
         return np.hstack((mfcc, delta_mfcc))
 
-    def _cluster_cosine_kmeans(self, norm_features: np.ndarray, k: int = 2, max_iter: int = 50) -> np.ndarray:
+    def _cluster_cosine_kmeans(
+        self, norm_features: np.ndarray, k: int = 2, max_iter: int = 50
+    ) -> np.ndarray:
         """SVD/PCA Bisection ve Kosinüs Benzerliği ile Garantili 2 Konuşmacı Kümelemesi."""
         n_samples, n_features = norm_features.shape
         if n_samples < k:
@@ -134,18 +141,17 @@ class LocalSpectralClusterDiarizer(IDiarizer):
 
             labels = new_labels
             for j in range(k):
-                mask = (labels == j)
+                mask = labels == j
                 if np.any(mask):
                     c_mean = np.mean(unit_feats[mask], axis=0)
                     centroids[j] = c_mean / (np.linalg.norm(c_mean) + 1e-8)
 
         return labels
 
-
     def diarize(self, audio_path: str) -> List[DiarizationSegment]:
         try:
-            import wave
             import os
+            import wave
 
             signal = None
             sr = 16000
@@ -159,9 +165,12 @@ class LocalSpectralClusterDiarizer(IDiarizer):
             except Exception:
                 # WAV dışında (MP3, M4A vb.) ses dosyalarını PyAV ile otomatik 16kHz WAV yap
                 from audio_analyzer.adapters.audio.audio_converter import AudioConverterProcessor
+
                 processor = AudioConverterProcessor()
                 temp_wav = f"{audio_path}.temp_diarize.wav"
-                converted_path = processor.normalize_and_resample(audio_path, temp_wav, target_sample_rate=16000)
+                converted_path = processor.normalize_and_resample(
+                    audio_path, temp_wav, target_sample_rate=16000
+                )
                 try:
                     with wave.open(converted_path, "rb") as wf:
                         sr = wf.getframerate()
@@ -181,7 +190,11 @@ class LocalSpectralClusterDiarizer(IDiarizer):
             step_size = int(sr * step_sec)
 
             if len(signal) < win_size:
-                return [DiarizationSegment(speaker_id="SPEAKER_00", start_time=0.0, end_time=len(signal) / sr)]
+                return [
+                    DiarizationSegment(
+                        speaker_id="SPEAKER_00", start_time=0.0, end_time=len(signal) / sr
+                    )
+                ]
 
             num_wins = 1 + (len(signal) - win_size) // step_size
 
@@ -221,18 +234,22 @@ class LocalSpectralClusterDiarizer(IDiarizer):
                 else:
                     if raw_labels[i] != current_active_spk:
                         lookahead = raw_labels[i : min(i + 4, num_wins)]
-                        if np.all(lookahead == raw_labels[i]) and np.any(energies[i:min(i+4, num_wins)] < silence_thresh):
+                        if np.all(lookahead == raw_labels[i]) and np.any(
+                            energies[i : min(i + 4, num_wins)] < silence_thresh
+                        ):
                             current_active_spk = raw_labels[i]
                         else:
                             gated_labels[i] = current_active_spk
 
             # Medyan Filtreleme
             from scipy.signal import medfilt
+
             k_size = min(7, len(gated_labels))
             if k_size % 2 == 0:
                 k_size = max(1, k_size - 1)
-            final_labels = medfilt(gated_labels, kernel_size=k_size) if len(gated_labels) > 0 else gated_labels
-
+            final_labels = (
+                medfilt(gated_labels, kernel_size=k_size) if len(gated_labels) > 0 else gated_labels
+            )
 
             segments: List[DiarizationSegment] = []
             current_spk = f"SPEAKER_{final_labels[0]:02d}"
@@ -242,20 +259,21 @@ class LocalSpectralClusterDiarizer(IDiarizer):
                 spk = f"SPEAKER_{final_labels[i]:02d}"
                 if spk != current_spk:
                     end_t = i * step_sec
-                    segments.append(DiarizationSegment(speaker_id=current_spk, start_time=start_t, end_time=end_t))
+                    segments.append(
+                        DiarizationSegment(
+                            speaker_id=current_spk, start_time=start_t, end_time=end_t
+                        )
+                    )
                     current_spk = spk
                     start_t = end_t
 
             end_t = len(signal) / sr
-            segments.append(DiarizationSegment(speaker_id=current_spk, start_time=start_t, end_time=end_t))
+            segments.append(
+                DiarizationSegment(speaker_id=current_spk, start_time=start_t, end_time=end_t)
+            )
 
             return segments
-
-
 
         except Exception as e:
             logger.error("LocalSpectralClusterDiarizer error: %s", e, exc_info=True)
             return [DiarizationSegment(speaker_id="SPEAKER_00", start_time=0.0, end_time=300.0)]
-
-
-

@@ -1,6 +1,7 @@
 import os
 import uuid
-from typing import Dict, Any
+from typing import Any, Dict
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -17,7 +18,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///storage/dev_database.db")
 def process_audio_task(self, record_id_str: str) -> Dict[str, Any]:
     """
     Arka planda Celery Worker tarafından yürütülen ses analiz görevi (Unit-of-Work ile).
-    
+
     1. UnitOfWork ile transaction sınırlarını yönetir.
     2. JobService üzerinden ses dosyasını analiz eder.
     3. Sonuç durumunu döner.
@@ -30,8 +31,9 @@ def process_audio_task(self, record_id_str: str) -> Dict[str, Any]:
     with uow:
         # 1. Depo ve Sıcak Yüklenmiş (Warm-loaded) Singleton AI Pipeline
         storage = LocalStorageAdapter(base_dir="storage/raw")
-        
+
         from audio_analyzer.services.pipeline_factory import get_shared_pipeline
+
         pipeline = get_shared_pipeline()
 
         job_service = JobService(
@@ -42,9 +44,8 @@ def process_audio_task(self, record_id_str: str) -> Dict[str, Any]:
 
         # 3. Analiz Görevinin Yürütülmesi
         success = job_service.execute_job(record_id)
-        
+
         if success:
             return {"record_id": record_id_str, "status": "COMPLETED"}
         else:
             return {"record_id": record_id_str, "status": "FAILED"}
-

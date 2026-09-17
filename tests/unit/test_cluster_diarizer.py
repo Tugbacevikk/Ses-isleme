@@ -1,4 +1,5 @@
 import pytest
+
 from audio_analyzer.adapters.diarization.cluster_diarizer import LocalSpectralClusterDiarizer
 
 

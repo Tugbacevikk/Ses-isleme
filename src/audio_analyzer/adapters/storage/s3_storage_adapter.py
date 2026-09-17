@@ -2,6 +2,7 @@ import os
 import uuid
 from pathlib import Path
 from typing import Optional
+
 from audio_analyzer.domain.interfaces import IAudioStorage
 
 
@@ -34,6 +35,7 @@ class S3StorageAdapter(IAudioStorage):
         if self._s3_client is None:
             try:
                 import boto3
+
                 kwargs = {"region_name": self.region_name}
                 if self.aws_access_key_id and self.aws_secret_access_key:
                     kwargs["aws_access_key_id"] = self.aws_access_key_id

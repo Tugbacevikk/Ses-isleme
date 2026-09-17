@@ -1,7 +1,8 @@
 import logging
-from typing import List, Tuple, Optional
 from pathlib import Path
-from audio_analyzer.domain.interfaces import ISTTEngine, IDiarizer, IAudioProcessor, IVADProcessor
+from typing import List, Optional, Tuple
+
+from audio_analyzer.domain.interfaces import IAudioProcessor, IDiarizer, ISTTEngine, IVADProcessor
 from audio_analyzer.domain.models import TranscriptUtterance
 from audio_analyzer.services.fusion_engine import FusionEngine
 from audio_analyzer.services.semantic_refiner import SemanticRefiner

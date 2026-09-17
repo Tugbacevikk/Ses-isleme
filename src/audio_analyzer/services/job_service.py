@@ -1,6 +1,7 @@
-import uuid
 import traceback
+import uuid
 from typing import Optional
+
 from audio_analyzer.domain.interfaces import IAudioStorage, ITranscriptRepository
 from audio_analyzer.domain.models import AudioRecord, JobStatus
 from audio_analyzer.services.pipeline import AudioAnalysisPipeline
@@ -29,7 +30,7 @@ class JobService:
         """
         storage_uri = self.storage.save(file_bytes, file_name)
         record_id = uuid.uuid4()
-        
+
         record = AudioRecord(
             id=record_id,
             storage_uri=storage_uri,
@@ -53,10 +54,11 @@ class JobService:
 
         try:
             local_audio_path = self.storage.get_path(record.storage_uri)
-            
+
             # Pipeline çalıştır
             if self.pipeline is None:
                 from audio_analyzer.services.pipeline_factory import get_shared_pipeline
+
                 self.pipeline = get_shared_pipeline()
 
             utterances, language = self.pipeline.process(local_audio_path)

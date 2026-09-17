@@ -1,6 +1,7 @@
 import pytest
+
+from audio_analyzer.domain.models import DiarizationSegment, WordSegment
 from audio_analyzer.services.fusion_engine import FusionEngine
-from audio_analyzer.domain.models import WordSegment, DiarizationSegment
 
 
 @pytest.mark.unit
@@ -10,15 +11,15 @@ def test_fusion_engine_speaker_attribution(sample_stt_words, sample_diarization_
     utterances = engine.align(sample_stt_words, sample_diarization_segments)
 
     assert len(utterances) == 3
-    
+
     # 1. Cümle: SPEAKER_00 ("Merhaba nasılsınız")
     assert utterances[0].speaker_id == "SPEAKER_00"
     assert utterances[0].text == "Merhaba nasılsınız"
-    
+
     # 2. Cümle: SPEAKER_01 ("Ben iyiyim")
     assert utterances[1].speaker_id == "SPEAKER_01"
     assert utterances[1].text == "Ben iyiyim"
-    
+
     # 3. Cümle: SPEAKER_00 ("Teşekkürler") - 2.0 saniye üzerindeki sessizlik yüzünden ayrı paragraf oldu!
     assert utterances[2].speaker_id == "SPEAKER_00"
     assert utterances[2].text == "Teşekkürler"
@@ -34,9 +35,7 @@ def test_fusion_engine_silence_threshold_trigger():
         WordSegment(word="İkinci", start_time=4.5, end_time=5.0),
         WordSegment(word="cümle", start_time=5.1, end_time=5.5),
     ]
-    diarization = [
-        DiarizationSegment(speaker_id="SPEAKER_00", start_time=0.0, end_time=6.0)
-    ]
+    diarization = [DiarizationSegment(speaker_id="SPEAKER_00", start_time=0.0, end_time=6.0)]
 
     engine = FusionEngine(max_silence_threshold=3.0)
     utterances = engine.align(words, diarization)

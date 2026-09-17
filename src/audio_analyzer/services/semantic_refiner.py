@@ -1,5 +1,6 @@
 import uuid
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from audio_analyzer.domain.models import TranscriptUtterance
 
 
@@ -57,12 +58,14 @@ class SemanticRefiner:
         Ollama erişilebilir değilse None döner.
         """
         try:
-            import urllib.request
             import json
+            import urllib.request
 
             req = urllib.request.Request(
                 self.ollama_url,
-                data=json.dumps({"model": self.model_name, "prompt": prompt, "stream": False}).encode("utf-8"),
+                data=json.dumps(
+                    {"model": self.model_name, "prompt": prompt, "stream": False}
+                ).encode("utf-8"),
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
@@ -96,7 +99,9 @@ class SemanticRefiner:
 
         return self._normalize_short_gaps(refined)
 
-    def _refine_with_llm(self, utterances: List[TranscriptUtterance]) -> Optional[List[TranscriptUtterance]]:
+    def _refine_with_llm(
+        self, utterances: List[TranscriptUtterance]
+    ) -> Optional[List[TranscriptUtterance]]:
         """
         Ollama LLM kullanarak diyalog bloklarını anlamsal olarak gözden geçirir.
         """
@@ -151,7 +156,9 @@ class SemanticRefiner:
 
         return [utt]
 
-    def _normalize_short_gaps(self, utterances: List[TranscriptUtterance]) -> List[TranscriptUtterance]:
+    def _normalize_short_gaps(
+        self, utterances: List[TranscriptUtterance]
+    ) -> List[TranscriptUtterance]:
         """
         Aynı konuşmacının 0.5 saniyeden kısa aralıklı parçalanmış cümlelerini birleştirir.
         """

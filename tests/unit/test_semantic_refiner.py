@@ -1,5 +1,7 @@
 import uuid
+
 import pytest
+
 from audio_analyzer.domain.models import TranscriptUtterance
 from audio_analyzer.services.semantic_refiner import SemanticRefiner
 
@@ -8,15 +10,9 @@ def test_semantic_refiner_splits_merged_utterance():
     refiner = SemanticRefiner(domain_mode="call_center")
 
     # Müşteri şikayeti ve Temsilci kapanışının tek bir SPEAKER_00 bloğunda birleştiği durum
-    merged_text = (
-        "Merhaba, ben Elif Çevik. Bilgisayar yavaş çalışıyor. Şikayetinizi not aldım ve konuyu en kısa sürede çözmek için gerekli adımları atacağız."
-    )
+    merged_text = "Merhaba, ben Elif Çevik. Bilgisayar yavaş çalışıyor. Şikayetinizi not aldım ve konuyu en kısa sürede çözmek için gerekli adımları atacağız."
     utt = TranscriptUtterance(
-        id=uuid.uuid4(),
-        speaker_id="SPEAKER_00",
-        start_time=6.58,
-        end_time=59.43,
-        text=merged_text
+        id=uuid.uuid4(), speaker_id="SPEAKER_00", start_time=6.58, end_time=59.43, text=merged_text
     )
 
     result = refiner.refine([utt])

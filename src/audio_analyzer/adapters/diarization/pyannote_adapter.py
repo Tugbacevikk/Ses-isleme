@@ -1,7 +1,8 @@
 import logging
 from typing import List, Optional
+
 from audio_analyzer.domain.interfaces import IDiarizer
-from audio_analyzer.domain.models import DiarizationSegment, DeviceConfig
+from audio_analyzer.domain.models import DeviceConfig, DiarizationSegment
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +28,13 @@ class PyAnnoteAdapter(IDiarizer):
     def _lazy_load_pipeline(self):
         if self._pipeline is None:
             try:
-                import torch
                 import warnings
+
+                import torch
+
                 warnings.filterwarnings("ignore", category=UserWarning, module="pyannote")
                 from pyannote.audio import Pipeline
+
                 try:
                     self._pipeline = Pipeline.from_pretrained(
                         self.model_name,
@@ -54,8 +58,8 @@ class PyAnnoteAdapter(IDiarizer):
     def diarize(self, audio_path: str) -> List[DiarizationSegment]:
         try:
             self._lazy_load_pipeline()
-            import torch
             import soundfile as sf
+            import torch
 
             # Soundfile ile sesi yukleyip PyAnnote'a waveform dict olarak vererek
             # Windows uzerindeki torchcodec / FFmpeg DLL yukleme hatalarini tamamen bypass ediyoruz.

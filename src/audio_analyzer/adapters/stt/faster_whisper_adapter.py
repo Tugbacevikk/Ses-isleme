@@ -1,6 +1,7 @@
 from typing import List, Optional, Tuple
+
 from audio_analyzer.domain.interfaces import ISTTEngine
-from audio_analyzer.domain.models import WordSegment, DeviceConfig
+from audio_analyzer.domain.models import DeviceConfig, WordSegment
 
 
 class FasterWhisperAdapter(ISTTEngine):
@@ -28,6 +29,7 @@ class FasterWhisperAdapter(ISTTEngine):
         if self._model is None:
             try:
                 from faster_whisper import WhisperModel
+
                 self._model = WhisperModel(
                     self.model_size,
                     device=self.device_config.device,
@@ -41,7 +43,7 @@ class FasterWhisperAdapter(ISTTEngine):
 
     def transcribe(self, audio_path: str) -> Tuple[List[WordSegment], Optional[str]]:
         self._lazy_load_model()
-        
+
         try:
             segments, info = self._model.transcribe(
                 audio_path,

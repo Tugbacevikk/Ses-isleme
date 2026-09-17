@@ -1,7 +1,8 @@
 import logging
 from typing import List, Optional
+
 from audio_analyzer.domain.interfaces import IDiarizer
-from audio_analyzer.domain.models import DiarizationSegment, DeviceConfig
+from audio_analyzer.domain.models import DeviceConfig, DiarizationSegment
 
 logger = logging.getLogger(__name__)
 

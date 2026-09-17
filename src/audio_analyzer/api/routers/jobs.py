@@ -6,13 +6,13 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
 from audio_analyzer.adapters.storage.local_storage_adapter import LocalStorageAdapter
-from audio_analyzer.api.dependencies import get_repository, get_uow, SessionLocal
+from audio_analyzer.api.dependencies import SessionLocal, get_repository, get_uow
 from audio_analyzer.domain.interfaces import ITranscriptRepository
 from audio_analyzer.domain.models import TranscriptUtterance
 from audio_analyzer.services.job_service import JobService
@@ -36,8 +36,7 @@ async def verify_api_key(api_key: Optional[str] = Depends(api_key_header)):
     if expected_api_key:
         if not api_key or not secrets.compare_digest(api_key, expected_api_key):
             raise HTTPException(
-                status_code=401,
-                detail="Geçersiz veya eksik API Anahtarı (X-API-Key header)."
+                status_code=401, detail="Geçersiz veya eksik API Anahtarı (X-API-Key header)."
             )
     return api_key
 
@@ -52,6 +51,7 @@ def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
         uow = get_uow()
         with uow:
             from audio_analyzer.services.pipeline_factory import get_shared_pipeline
+
             pipeline = get_shared_pipeline()
 
             job_service = JobService(storage=storage, repository=uow.repository, pipeline=pipeline)
@@ -115,7 +115,7 @@ async def upload_and_analyze_audio(
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"Desteklenmeyen ses formatı '{ext}'. İzin verilen formatlar: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+            detail=f"Desteklenmeyen ses formatı '{ext}'. İzin verilen formatlar: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
         )
 
     file_bytes = await file.read()
@@ -126,7 +126,7 @@ async def upload_and_analyze_audio(
     if len(file_bytes) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"Dosya boyutu çok büyük ({len(file_bytes) / (1024 * 1024):.1f} MB). Maksimum izin verilen limit: 100 MB."
+            detail=f"Dosya boyutu çok büyük ({len(file_bytes) / (1024 * 1024):.1f} MB). Maksimum izin verilen limit: 100 MB.",
         )
 
     storage = LocalStorageAdapter(base_dir="storage/raw")
@@ -137,10 +137,13 @@ async def upload_and_analyze_audio(
     if use_celery:
         try:
             from audio_analyzer.workers.tasks import process_audio_task
+
             process_audio_task.delay(str(job_id))
         except Exception as e:
             logger.warning("Celery delay dispatch note: %s, falling back to BackgroundTasks", e)
-            background_tasks.add_task(run_pipeline_background, str(job_id), file.filename, file_bytes)
+            background_tasks.add_task(
+                run_pipeline_background, str(job_id), file.filename, file_bytes
+            )
     else:
         background_tasks.add_task(run_pipeline_background, str(job_id), file.filename, file_bytes)
 

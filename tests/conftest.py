@@ -1,8 +1,9 @@
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
+
 from audio_analyzer.adapters.repository.models import Base
-from audio_analyzer.domain.models import WordSegment, DiarizationSegment
+from audio_analyzer.domain.models import DiarizationSegment, WordSegment
 
 
 @pytest.fixture
@@ -26,7 +27,9 @@ def sample_stt_words():
         WordSegment(word="nasılsınız", start_time=0.6, end_time=1.2),
         WordSegment(word="Ben", start_time=1.3, end_time=1.5),
         WordSegment(word="iyiyim", start_time=1.6, end_time=2.0),
-        WordSegment(word="Teşekkürler", start_time=4.0, end_time=4.8), # 2.0s - 4.0s arası sessizlik (>1.5s)
+        WordSegment(
+            word="Teşekkürler", start_time=4.0, end_time=4.8
+        ),  # 2.0s - 4.0s arası sessizlik (>1.5s)
     ]
 
 

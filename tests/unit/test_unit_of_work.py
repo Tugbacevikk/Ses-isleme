@@ -1,7 +1,9 @@
 import uuid
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
 from audio_analyzer.adapters.repository.models import Base
 from audio_analyzer.adapters.repository.unit_of_work import SqlAlchemyUnitOfWork
 from audio_analyzer.domain.models import AudioRecord, JobStatus

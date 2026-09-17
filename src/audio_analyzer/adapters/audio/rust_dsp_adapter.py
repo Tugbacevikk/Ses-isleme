@@ -1,11 +1,14 @@
-import numpy as np
 from typing import List, Tuple
-from audio_analyzer.domain.interfaces import IAudioProcessor
+
+import numpy as np
+
 from audio_analyzer.adapters.audio.audio_converter import AudioConverterProcessor
+from audio_analyzer.domain.interfaces import IAudioProcessor
 
 # Rust PyO3 Modülünü Dinamik Olarak İçe Aktarmayı Dene
 try:
     import native_audio_dsp
+
     HAS_RUST_NATIVE = True
 except ImportError:
     HAS_RUST_NATIVE = False
@@ -43,13 +46,13 @@ class RustAudioDSPProcessor(IAudioProcessor):
             arr = np.array(pcm_signal, dtype=np.float32)
             num_samples = int(len(arr) * 16000 / original_sr)
             resampled = np.interp(
-                np.linspace(0, len(arr), num_samples, endpoint=False),
-                np.arange(len(arr)),
-                arr
+                np.linspace(0, len(arr), num_samples, endpoint=False), np.arange(len(arr)), arr
             )
             return resampled.tolist()
 
-    def fast_vad_energy(self, pcm_signal: List[float], frame_size: int = 512, threshold: float = 0.02) -> List[bool]:
+    def fast_vad_energy(
+        self, pcm_signal: List[float], frame_size: int = 512, threshold: float = 0.02
+    ) -> List[bool]:
         """
         Rust hızında Voice Activity Detection (VAD) RMS enerji tespiti.
         """
@@ -62,7 +65,7 @@ class RustAudioDSPProcessor(IAudioProcessor):
             results = []
             for i in range(num_frames):
                 frame = arr[i * frame_size : (i + 1) * frame_size]
-                rms = np.sqrt(np.mean(frame ** 2))
+                rms = np.sqrt(np.mean(frame**2))
                 results.append(bool(rms >= threshold))
             return results
 

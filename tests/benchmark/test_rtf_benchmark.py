@@ -1,8 +1,10 @@
 import os
 import time
+
 import pytest
-from audio_analyzer.utils.audio_io import create_synthetic_wav, get_audio_metadata
+
 from audio_analyzer.adapters.audio.rust_dsp_adapter import RustAudioDSPProcessor
+from audio_analyzer.utils.audio_io import create_synthetic_wav, get_audio_metadata
 
 
 def test_rtf_audio_dsp_benchmark(tmp_path):
@@ -28,7 +30,9 @@ def test_rtf_audio_dsp_benchmark(tmp_path):
 
     rtf = processing_time / duration
 
-    print(f"\n[BENCHMARK] Ses Süresi: {duration:.2f}s | İşleme Süresi: {processing_time:.4f}s | RTF: {rtf:.4f}")
+    print(
+        f"\n[BENCHMARK] Ses Süresi: {duration:.2f}s | İşleme Süresi: {processing_time:.4f}s | RTF: {rtf:.4f}"
+    )
 
     assert len(resampled) == len(dummy_signal)
     assert len(vad_flags) > 0

@@ -1,12 +1,13 @@
 import uuid
 from abc import ABC, abstractmethod
 from typing import List, Optional, Tuple
+
 from audio_analyzer.domain.models import (
     AudioRecord,
-    TranscriptUtterance,
-    WordSegment,
     DiarizationSegment,
     JobStatus,
+    TranscriptUtterance,
+    WordSegment,
 )
 
 
@@ -51,7 +52,10 @@ class ITranscriptRepository(ABC):
 
     @abstractmethod
     def save_utterances(
-        self, record_id: uuid.UUID, utterances: List[TranscriptUtterance], language: Optional[str] = None
+        self,
+        record_id: uuid.UUID,
+        utterances: List[TranscriptUtterance],
+        language: Optional[str] = None,
     ) -> bool:
         """Analiz sonucu oluşan konuşmacı metinlerini kaydedip durumu COMPLETED yapar."""
         pass

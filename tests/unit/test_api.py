@@ -1,9 +1,11 @@
 import io
-import wave
 import math
 import struct
+import wave
+
 import pytest
 from fastapi.testclient import TestClient
+
 from audio_analyzer.api.main import app
 
 client = TestClient(app)
@@ -40,7 +42,7 @@ def test_api_upload_and_status_flow(tmp_path):
     # 1. POST /api/v1/analyze
     valid_wav = make_valid_wav_bytes()
     files = {"file": ("test_api.wav", valid_wav, "audio/wav")}
-    
+
     post_res = client.post("/api/v1/analyze", files=files)
     assert post_res.status_code == 202
     post_data = post_res.json()
@@ -70,8 +72,8 @@ def test_utterance_crud_flow():
             "speaker_id": "SPEAKER_00",
             "start_time": 0.0,
             "end_time": 1.0,
-            "text": "Merhaba dunya"
-        }
+            "text": "Merhaba dunya",
+        },
     )
     assert add_res.status_code == 200
     assert add_res.json()["status"] == "SUCCESS"
@@ -79,10 +81,7 @@ def test_utterance_crud_flow():
     # 2. PUT /api/v1/jobs/{job_id}/utterances/0 (Kutu Guncelle)
     update_res = client.put(
         f"/api/v1/jobs/{job_id}/utterances/0",
-        json={
-            "speaker_id": "SPEAKER_01",
-            "text": "Guncellenmis metin"
-        }
+        json={"speaker_id": "SPEAKER_01", "text": "Guncellenmis metin"},
     )
     assert update_res.status_code == 200
     assert update_res.json()["status"] == "SUCCESS"
@@ -125,6 +124,3 @@ def test_api_key_authorization_on_read_and_write_endpoints(monkeypatch):
     # 3. Doğru API Key ile erişim
     res_valid = client.get("/api/v1/jobs", headers={"X-API-Key": "secret-test-key"})
     assert res_valid.status_code == 200
-
-
-

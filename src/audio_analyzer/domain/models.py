@@ -1,9 +1,11 @@
 import uuid
-from enum import Enum
 from datetime import datetime, timezone
+from enum import Enum
 from typing import List, Optional
+
 try:
     import torch
+
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
@@ -12,6 +14,7 @@ from pydantic import BaseModel, Field
 
 class JobStatus(str, Enum):
     """Analiz görevinin yaşam döngüsü durumları."""
+
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
     COMPLETED = "COMPLETED"
@@ -23,6 +26,7 @@ class DeviceConfig(BaseModel):
     Dinamik donanım ve hassasiyet (Quantization) konfigürasyonu.
     GPU varsa CUDA + float16, yoksa CPU + int8 modunu seçer.
     """
+
     device: str = Field(
         default_factory=lambda: "cuda" if (HAS_TORCH and torch.cuda.is_available()) else "cpu"
     )
@@ -34,6 +38,7 @@ class DeviceConfig(BaseModel):
 
 class WordSegment(BaseModel):
     """Speech-to-Text motorundan çıkan kelime seviyesinde zaman damgalı metin birimi."""
+
     word: str
     start_time: float
     end_time: float
@@ -52,6 +57,7 @@ class WordSegment(BaseModel):
 
 class DiarizationSegment(BaseModel):
     """Speaker Diarization motorundan çıkan konuşmacı zaman aralığı."""
+
     speaker_id: str
     start_time: float
     end_time: float
@@ -68,6 +74,7 @@ class DiarizationSegment(BaseModel):
 
 class TranscriptUtterance(BaseModel):
     """Final çıktı: Konuşmacı ile eşleştirilmiş cümle/paragraf bloğu."""
+
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     speaker_id: str
     start_time: float
@@ -78,6 +85,7 @@ class TranscriptUtterance(BaseModel):
 
 class AudioRecord(BaseModel):
     """Ses kaydı domain varlığı."""
+
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     storage_uri: str
     file_name: str

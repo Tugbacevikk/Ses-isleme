@@ -1,9 +1,9 @@
-import os
-import wave
 import math
+import os
 import struct
+import wave
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 def load_audio_bytes(file_path: str) -> bytes:
@@ -48,7 +48,7 @@ def get_audio_metadata(file_path: str) -> Dict[str, Any]:
                 "sample_rate": sample_rate,
                 "frames": frames,
                 "duration_sec": duration_sec,
-                "format": "WAV"
+                "format": "WAV",
             }
     except Exception:
         # WAV dışı formatlar (MP3/FLAC) için dosya boyutu tahmini
@@ -58,7 +58,7 @@ def get_audio_metadata(file_path: str) -> Dict[str, Any]:
             "sample_rate": 16000,
             "duration_sec": 0.0,
             "file_size_bytes": file_size,
-            "format": path.suffix.replace(".", "").upper()
+            "format": path.suffix.replace(".", "").upper(),
         }
 
 

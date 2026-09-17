@@ -1,9 +1,10 @@
 import uuid
 from typing import List, Optional
+
 from audio_analyzer.domain.models import (
-    WordSegment,
     DiarizationSegment,
     TranscriptUtterance,
+    WordSegment,
 )
 
 
@@ -67,7 +68,6 @@ class FusionEngine:
 
         return best_speaker
 
-
     def _group_words_into_utterances(
         self, attributed_words: List[tuple[WordSegment, str]]
     ) -> List[TranscriptUtterance]:
@@ -101,9 +101,7 @@ class FusionEngine:
 
         return utterances
 
-    def _create_utterance(
-        self, speaker_id: str, words: List[WordSegment]
-    ) -> TranscriptUtterance:
+    def _create_utterance(self, speaker_id: str, words: List[WordSegment]) -> TranscriptUtterance:
         start_time = words[0].start_time
         end_time = words[-1].end_time
         text = " ".join(w.word for w in words).strip()

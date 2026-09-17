@@ -1,7 +1,8 @@
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+
 from fastapi import Depends
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
 from audio_analyzer.adapters.repository.unit_of_work import SqlAlchemyUnitOfWork

@@ -1,8 +1,8 @@
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from dotenv import load_dotenv
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -27,13 +27,14 @@ async def lifespan(app: FastAPI):
     Sunucu başlatılırken veritabanı tablolarını oluşturur ve AI modellerini önceden ısıtır (Warm-load).
     """
     Base.metadata.create_all(bind=engine)
-    
+
     try:
         from audio_analyzer.services.pipeline_factory import get_shared_pipeline
+
         get_shared_pipeline()
     except Exception as e:
         logger.warning("Model ön yükleme uyarısı: %s", e)
-    
+
     yield
 
 
@@ -75,6 +76,7 @@ async def favicon():
 def start():
     """Uvicorn sunucusu üzerinden FastAPI API'sini başlatır."""
     import uvicorn
+
     uvicorn.run("audio_analyzer.api.main:app", host="0.0.0.0", port=8000, reload=True)
 
 

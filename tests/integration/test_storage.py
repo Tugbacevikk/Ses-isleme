@@ -1,6 +1,8 @@
 import os
 import tempfile
+
 import pytest
+
 from audio_analyzer.adapters.storage.local_storage_adapter import LocalStorageAdapter
 from audio_analyzer.adapters.storage.s3_storage_adapter import S3StorageAdapter
 

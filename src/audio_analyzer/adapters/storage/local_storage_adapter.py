@@ -1,6 +1,7 @@
 import os
 import uuid
 from pathlib import Path
+
 from audio_analyzer.domain.interfaces import IAudioStorage
 
 
@@ -18,10 +19,10 @@ class LocalStorageAdapter(IAudioStorage):
         unique_prefix = uuid.uuid4().hex[:8]
         safe_filename = f"{unique_prefix}_{file_name}"
         file_path = self.base_dir / safe_filename
-        
+
         with open(file_path, "wb") as f:
             f.write(file_bytes)
-            
+
         return f"file:///{file_path.absolute().as_posix()}"
 
     def get_path(self, storage_uri: str) -> str:

@@ -1,9 +1,11 @@
 import uuid
 from typing import List, Optional
+
 from sqlalchemy.orm import Session
-from audio_analyzer.domain.interfaces import ITranscriptRepository
-from audio_analyzer.domain.models import AudioRecord, TranscriptUtterance, JobStatus
+
 from audio_analyzer.adapters.repository.models import AudioRecordModel, TranscriptUtteranceModel
+from audio_analyzer.domain.interfaces import ITranscriptRepository
+from audio_analyzer.domain.models import AudioRecord, JobStatus, TranscriptUtterance
 
 
 class PostgresRepository(ITranscriptRepository):
@@ -44,9 +46,7 @@ class PostgresRepository(ITranscriptRepository):
 
     def get_record_by_id(self, record_id: uuid.UUID) -> Optional[AudioRecord]:
         orm_model = (
-            self.session.query(AudioRecordModel)
-            .filter(AudioRecordModel.id == record_id)
-            .first()
+            self.session.query(AudioRecordModel).filter(AudioRecordModel.id == record_id).first()
         )
         if not orm_model:
             return None
@@ -56,27 +56,26 @@ class PostgresRepository(ITranscriptRepository):
         self, record_id: uuid.UUID, status: JobStatus, error_message: Optional[str] = None
     ) -> bool:
         orm_model = (
-            self.session.query(AudioRecordModel)
-            .filter(AudioRecordModel.id == record_id)
-            .first()
+            self.session.query(AudioRecordModel).filter(AudioRecordModel.id == record_id).first()
         )
         if not orm_model:
             return False
-        
+
         orm_model.status = status.value
         if error_message is not None:
             orm_model.error_message = error_message
-        
+
         self._commit_or_flush()
         return True
 
     def save_utterances(
-        self, record_id: uuid.UUID, utterances: List[TranscriptUtterance], language: Optional[str] = None
+        self,
+        record_id: uuid.UUID,
+        utterances: List[TranscriptUtterance],
+        language: Optional[str] = None,
     ) -> bool:
         orm_model = (
-            self.session.query(AudioRecordModel)
-            .filter(AudioRecordModel.id == record_id)
-            .first()
+            self.session.query(AudioRecordModel).filter(AudioRecordModel.id == record_id).first()
         )
         if not orm_model:
             return False
@@ -134,9 +133,7 @@ class PostgresRepository(ITranscriptRepository):
 
     def add_utterance(self, record_id: uuid.UUID, utterance: TranscriptUtterance) -> bool:
         record = (
-            self.session.query(AudioRecordModel)
-            .filter(AudioRecordModel.id == record_id)
-            .first()
+            self.session.query(AudioRecordModel).filter(AudioRecordModel.id == record_id).first()
         )
         if not record:
             return False
@@ -166,9 +163,7 @@ class PostgresRepository(ITranscriptRepository):
 
     def delete_record(self, record_id: uuid.UUID) -> bool:
         orm_model = (
-            self.session.query(AudioRecordModel)
-            .filter(AudioRecordModel.id == record_id)
-            .first()
+            self.session.query(AudioRecordModel).filter(AudioRecordModel.id == record_id).first()
         )
         if not orm_model:
             return False
