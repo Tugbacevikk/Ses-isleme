@@ -1,5 +1,7 @@
 import os
 from typing import Optional
+
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 from audio_analyzer.domain.models import DeviceConfig
 from audio_analyzer.adapters.audio.audio_converter import AudioConverterProcessor
 from audio_analyzer.adapters.audio.silero_vad import SileroVADProcessor
