@@ -103,3 +103,28 @@ def test_list_jobs_endpoint():
     assert len(jobs) >= 1
 
 
+@pytest.mark.unit
+def test_api_key_authorization_on_read_and_write_endpoints(monkeypatch):
+    """API_KEY ortam değişkeni ayarlandığında tüm okuma ve yazma endpoint'lerinin 401 döndürdüğünü doğrular."""
+    monkeypatch.setenv("API_KEY", "secret-test-key")
+
+    # 1. Okuma Endpoint'leri (GET)
+    res_list = client.get("/api/v1/jobs")
+    assert res_list.status_code == 401
+
+    res_get = client.get("/api/v1/jobs/00000000-0000-0000-0000-000000000000")
+    assert res_get.status_code == 401
+
+    res_audio = client.get("/api/v1/jobs/00000000-0000-0000-0000-000000000000/audio")
+    assert res_audio.status_code == 401
+
+    # 2. Yanlış API Key ile erişim
+    res_wrong = client.get("/api/v1/jobs", headers={"X-API-Key": "wrong-key"})
+    assert res_wrong.status_code == 401
+
+    # 3. Doğru API Key ile erişim
+    res_valid = client.get("/api/v1/jobs", headers={"X-API-Key": "secret-test-key"})
+    assert res_valid.status_code == 200
+
+
+

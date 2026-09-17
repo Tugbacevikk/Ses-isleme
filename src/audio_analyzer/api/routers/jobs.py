@@ -1,5 +1,6 @@
 import mimetypes
 import os
+import secrets
 import uuid
 from pathlib import Path
 from typing import List, Optional
@@ -26,13 +27,15 @@ async def verify_api_key(api_key: Optional[str] = Depends(api_key_header)):
     """
     İsteğin X-API-Key başlığını doğrular. Ortam değişkeninde API_KEY tanımlıysa kontrol eder.
     Tanımlı değilse (geliştirme modunda) doğrulama atlanır.
+    Timing-attack saldırılarını önlemek için secrets.compare_digest kullanılır.
     """
     expected_api_key = os.getenv("API_KEY")
-    if expected_api_key and api_key != expected_api_key:
-        raise HTTPException(
-            status_code=401,
-            detail="Geçersiz veya eksik API Anahtarı (X-API-Key header)."
-        )
+    if expected_api_key:
+        if not api_key or not secrets.compare_digest(api_key, expected_api_key):
+            raise HTTPException(
+                status_code=401,
+                detail="Geçersiz veya eksik API Anahtarı (X-API-Key header)."
+            )
     return api_key
 
 
@@ -151,6 +154,7 @@ def list_jobs(
     skip: int = Query(0, ge=0, description="Atlanacak kayıt sayısı"),
     limit: int = Query(20, ge=1, le=100, description="Getirilecek maksimum kayıt sayısı"),
     repository: ITranscriptRepository = Depends(get_repository),
+    _api_key: Optional[str] = Depends(verify_api_key),
 ):
     """
     Geçmişte yüklenen tüm ses analizi görevlerini tarihe göre tersten sıralı (en yeni en üstte)
@@ -179,7 +183,11 @@ def list_jobs(
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
-def get_job_status(job_id: str, repository: ITranscriptRepository = Depends(get_repository)):
+def get_job_status(
+    job_id: str,
+    repository: ITranscriptRepository = Depends(get_repository),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
     """
     Verilen job_id görevinin durumunu ve analiz sonuçlarını getirir.
     """
@@ -214,7 +222,11 @@ def get_job_status(job_id: str, repository: ITranscriptRepository = Depends(get_
 
 
 @router.get("/jobs/{job_id}/audio")
-def get_job_audio_file(job_id: str, repository: ITranscriptRepository = Depends(get_repository)):
+def get_job_audio_file(
+    job_id: str,
+    repository: ITranscriptRepository = Depends(get_repository),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
     """
     Ses analizi görevine ait ham ses dosyasını tarayıcıda dinlenmek üzere sunar (Streaming / Audio Player).
     """
