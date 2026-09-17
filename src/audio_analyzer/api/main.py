@@ -17,7 +17,9 @@ from sqlalchemy.orm import sessionmaker, Session
 
 from audio_analyzer.adapters.repository.models import Base
 from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
+from audio_analyzer.adapters.repository.unit_of_work import SqlAlchemyUnitOfWork
 from audio_analyzer.adapters.storage.local_storage_adapter import LocalStorageAdapter
+from audio_analyzer.domain.interfaces import ITranscriptRepository, IUnitOfWork
 from audio_analyzer.domain.models import DeviceConfig, JobStatus, TranscriptUtterance
 from audio_analyzer.services.fusion_engine import FusionEngine
 from audio_analyzer.services.job_service import JobService
@@ -68,6 +70,16 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def get_repository(db: Session = Depends(get_db)) -> ITranscriptRepository:
+    """FastAPI Bağımlılık Enjeksiyonu (Dependency Injection) ile ITranscriptRepository örneği sağlar."""
+    return PostgresRepository(session=db)
+
+
+def get_uow() -> SqlAlchemyUnitOfWork:
+    """Unit of Work örneği sağlar."""
+    return SqlAlchemyUnitOfWork(session_factory=SessionLocal)
 
 
 # Response Schemas
@@ -121,23 +133,20 @@ async def favicon():
 def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
     """
     Arka plan asenkron worker fonksiyonu (Non-blocking HTTP 202 mimarisi).
-    Sıcak yüklenmiş (Warm-loaded) önbellekteki tekil yapay zeka pipeline nesnesini kullanır.
+    Sıcak yüklenmiş (Warm-loaded) önbellekteki tekil yapay zeka pipeline nesnesini ve UnitOfWork kullanır.
     """
-    db = SessionLocal()
     try:
         storage = LocalStorageAdapter(base_dir="storage/raw")
-        repository = PostgresRepository(session=db)
+        uow = SqlAlchemyUnitOfWork(session_factory=SessionLocal)
+        with uow:
+            # Sıcak yüklenmiş (Warm-loaded) Singleton AI Pipeline
+            from audio_analyzer.services.pipeline_factory import get_shared_pipeline
+            pipeline = get_shared_pipeline()
 
-        # Sıcak yüklenmiş (Warm-loaded) Singleton AI Pipeline
-        from audio_analyzer.services.pipeline_factory import get_shared_pipeline
-        pipeline = get_shared_pipeline()
-
-        job_service = JobService(storage=storage, repository=repository, pipeline=pipeline)
-        job_service.execute_job(uuid.UUID(job_id_str))
+            job_service = JobService(storage=storage, repository=uow.repository, pipeline=pipeline)
+            job_service.execute_job(uuid.UUID(job_id_str))
     except Exception as ex:
         print(f"Background task execution error: {ex}")
-    finally:
-        db.close()
 
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -165,7 +174,7 @@ MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB
 async def upload_and_analyze_audio(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    repository: ITranscriptRepository = Depends(get_repository),
     _api_key: Optional[str] = Depends(verify_api_key),
 ):
     """
@@ -197,8 +206,6 @@ async def upload_and_analyze_audio(
         )
 
     storage = LocalStorageAdapter(base_dir="storage/raw")
-    repository = PostgresRepository(session=db)
-
     job_service = JobService(storage=storage, repository=repository)
     job_id = job_service.create_job(file_name=file.filename, file_bytes=file_bytes)
 
@@ -232,7 +239,7 @@ def update_utterance_speaker(
     job_id: str,
     utterance_index: int,
     req: UtteranceUpdateRequest,
-    db: Session = Depends(get_db),
+    repository: ITranscriptRepository = Depends(get_repository),
     _api_key: Optional[str] = Depends(verify_api_key),
 ):
     """
@@ -243,7 +250,6 @@ def update_utterance_speaker(
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    repository = PostgresRepository(session=db)
     success = repository.update_utterance(
         record_id=record_uuid,
         utterance_index=utterance_index,
@@ -260,7 +266,7 @@ def update_utterance_speaker(
 def delete_utterance(
     job_id: str,
     utterance_index: int,
-    db: Session = Depends(get_db),
+    repository: ITranscriptRepository = Depends(get_repository),
     _api_key: Optional[str] = Depends(verify_api_key),
 ):
     """
@@ -271,7 +277,6 @@ def delete_utterance(
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    repository = PostgresRepository(session=db)
     success = repository.delete_utterance(record_id=record_uuid, utterance_index=utterance_index)
     if not success:
         raise HTTPException(status_code=404, detail="Silinecek cümle bulunamadı.")
@@ -290,7 +295,7 @@ class UtteranceCreateRequest(BaseModel):
 def create_utterance(
     job_id: str,
     req: UtteranceCreateRequest,
-    db: Session = Depends(get_db),
+    repository: ITranscriptRepository = Depends(get_repository),
     _api_key: Optional[str] = Depends(verify_api_key),
 ):
     """
@@ -309,7 +314,6 @@ def create_utterance(
         end_time=req.end_time,
         text=req.text,
     )
-    repository = PostgresRepository(session=db)
     success = repository.add_utterance(record_id=record_uuid, utterance=new_u)
     if not success:
         raise HTTPException(status_code=404, detail="Ses görevi bulunamadı.")
@@ -318,7 +322,7 @@ def create_utterance(
 
 
 @app.get("/api/v1/jobs/{job_id}", response_model=JobStatusResponse)
-def get_job_status(job_id: str, db: Session = Depends(get_db)):
+def get_job_status(job_id: str, repository: ITranscriptRepository = Depends(get_repository)):
     """
     Verilen job_id görevinin durumunu ve analiz sonuçlarını getirir.
     """
@@ -327,7 +331,6 @@ def get_job_status(job_id: str, db: Session = Depends(get_db)):
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    repository = PostgresRepository(session=db)
     record = repository.get_record_by_id(record_uuid)
 
     if not record:
@@ -354,7 +357,7 @@ def get_job_status(job_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/api/v1/jobs/{job_id}/audio")
-def get_job_audio_file(job_id: str, db: Session = Depends(get_db)):
+def get_job_audio_file(job_id: str, repository: ITranscriptRepository = Depends(get_repository)):
     """
     Ses analizi görevine ait ham ses dosyasını tarayıcıda dinlenmek üzere sunar (Streaming / Audio Player).
     """
@@ -363,7 +366,6 @@ def get_job_audio_file(job_id: str, db: Session = Depends(get_db)):
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    repository = PostgresRepository(session=db)
     record = repository.get_record_by_id(record_uuid)
 
     if not record:
