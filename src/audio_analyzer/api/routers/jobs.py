@@ -1,0 +1,288 @@
+import mimetypes
+import os
+import uuid
+from pathlib import Path
+from typing import List, Optional
+
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks
+from fastapi.responses import FileResponse
+from fastapi.security import APIKeyHeader
+from pydantic import BaseModel
+
+from audio_analyzer.adapters.storage.local_storage_adapter import LocalStorageAdapter
+from audio_analyzer.api.dependencies import get_repository, get_uow, SessionLocal
+from audio_analyzer.domain.interfaces import ITranscriptRepository
+from audio_analyzer.domain.models import TranscriptUtterance
+from audio_analyzer.services.job_service import JobService
+
+router = APIRouter(prefix="/api/v1", tags=["Jobs & Analysis"])
+
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+ALLOWED_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
+MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB
+
+
+async def verify_api_key(api_key: Optional[str] = Depends(api_key_header)):
+    """
+    İsteğin X-API-Key başlığını doğrular. Ortam değişkeninde API_KEY tanımlıysa kontrol eder.
+    Tanımlı değilse (geliştirme modunda) doğrulama atlanır.
+    """
+    expected_api_key = os.getenv("API_KEY")
+    if expected_api_key and api_key != expected_api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Geçersiz veya eksik API Anahtarı (X-API-Key header)."
+        )
+    return api_key
+
+
+def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
+    """
+    Arka plan asenkron worker fonksiyonu (Non-blocking HTTP 202 mimarisi).
+    Sıcak yüklenmiş (Warm-loaded) önbellekteki tekil yapay zeka pipeline nesnesini ve UnitOfWork kullanır.
+    """
+    try:
+        storage = LocalStorageAdapter(base_dir="storage/raw")
+        uow = get_uow()
+        with uow:
+            from audio_analyzer.services.pipeline_factory import get_shared_pipeline
+            pipeline = get_shared_pipeline()
+
+            job_service = JobService(storage=storage, repository=uow.repository, pipeline=pipeline)
+            job_service.execute_job(uuid.UUID(job_id_str))
+    except Exception as ex:
+        print(f"Background task execution error: {ex}")
+
+
+# --- Schemas ---
+class JobCreateResponse(BaseModel):
+    job_id: str
+    file_name: str
+    status: str
+    message: str
+
+
+class UtteranceResponse(BaseModel):
+    speaker_id: str
+    start_time: float
+    end_time: float
+    text: str
+
+
+class JobStatusResponse(BaseModel):
+    job_id: str
+    file_name: str
+    status: str
+    language: Optional[str] = None
+    error_message: Optional[str] = None
+    utterances: List[UtteranceResponse] = []
+
+
+class UtteranceUpdateRequest(BaseModel):
+    speaker_id: str
+    text: str
+
+
+class UtteranceCreateRequest(BaseModel):
+    speaker_id: str
+    start_time: float
+    end_time: float
+    text: str
+
+
+# --- Endpoints ---
+@router.post("/analyze", response_model=JobCreateResponse, status_code=202)
+async def upload_and_analyze_audio(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    repository: ITranscriptRepository = Depends(get_repository),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    """
+    Ses dosyasını yükler, validasyondan geçirir, PENDING durumuyla kaydeder
+    ve analizi ASENKRON başlatır (HTTP 202 Accepted).
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Ses dosyası adı boş olamaz.")
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Desteklenmeyen ses formatı '{ext}'. İzin verilen formatlar: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+        )
+
+    file_bytes = await file.read()
+
+    if len(file_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Yüklenen ses dosyası boş (0 bayt) olamaz.")
+
+    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Dosya boyutu çok büyük ({len(file_bytes) / (1024 * 1024):.1f} MB). Maksimum izin verilen limit: 100 MB."
+        )
+
+    storage = LocalStorageAdapter(base_dir="storage/raw")
+    job_service = JobService(storage=storage, repository=repository)
+    job_id = job_service.create_job(file_name=file.filename, file_bytes=file_bytes)
+
+    use_celery = os.getenv("USE_CELERY", "false").lower() == "true"
+    if use_celery:
+        try:
+            from audio_analyzer.workers.tasks import process_audio_task
+            process_audio_task.delay(str(job_id))
+        except Exception as e:
+            print(f"Celery delay dispatch note: {e}, falling back to BackgroundTasks")
+            background_tasks.add_task(run_pipeline_background, str(job_id), file.filename, file_bytes)
+    else:
+        background_tasks.add_task(run_pipeline_background, str(job_id), file.filename, file_bytes)
+
+    return JobCreateResponse(
+        job_id=str(job_id),
+        file_name=file.filename,
+        status="PENDING",
+        message="Ses analizi görevi asenkron olarak kuyruğa alındı.",
+    )
+
+
+@router.get("/jobs/{job_id}", response_model=JobStatusResponse)
+def get_job_status(job_id: str, repository: ITranscriptRepository = Depends(get_repository)):
+    """
+    Verilen job_id görevinin durumunu ve analiz sonuçlarını getirir.
+    """
+    try:
+        record_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
+
+    record = repository.get_record_by_id(record_uuid)
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Ses analizi görevi bulunamadı.")
+
+    utterances = [
+        UtteranceResponse(
+            speaker_id=u.speaker_id,
+            start_time=u.start_time,
+            end_time=u.end_time,
+            text=u.text,
+        )
+        for u in record.utterances
+    ]
+
+    return JobStatusResponse(
+        job_id=str(record.id),
+        file_name=record.file_name,
+        status=record.status.value,
+        language=record.language,
+        error_message=record.error_message,
+        utterances=utterances,
+    )
+
+
+@router.get("/jobs/{job_id}/audio")
+def get_job_audio_file(job_id: str, repository: ITranscriptRepository = Depends(get_repository)):
+    """
+    Ses analizi görevine ait ham ses dosyasını tarayıcıda dinlenmek üzere sunar (Streaming / Audio Player).
+    """
+    try:
+        record_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
+
+    record = repository.get_record_by_id(record_uuid)
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Ses analizi görevi bulunamadı.")
+
+    storage = LocalStorageAdapter(base_dir="storage/raw")
+    local_path = storage.get_path(record.storage_uri)
+
+    if not os.path.exists(local_path):
+        raise HTTPException(status_code=404, detail="Ses dosyası diskte bulunamadı.")
+
+    media_type, _ = mimetypes.guess_type(local_path)
+    if not media_type:
+        media_type = "audio/wav"
+
+    return FileResponse(path=local_path, media_type=media_type, filename=record.file_name)
+
+
+@router.put("/jobs/{job_id}/utterances/{utterance_index}")
+def update_utterance_speaker(
+    job_id: str,
+    utterance_index: int,
+    req: UtteranceUpdateRequest,
+    repository: ITranscriptRepository = Depends(get_repository),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    """
+    Kullanıcının Arayüzden (UI) manuel olarak konuşmacı etiketini veya metni değiştirmesini sağlar.
+    """
+    try:
+        record_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
+
+    success = repository.update_utterance(
+        record_id=record_uuid,
+        utterance_index=utterance_index,
+        speaker_id=req.speaker_id,
+        text=req.text,
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="Güncellenecek cümle bulunamadı.")
+
+    return {"status": "SUCCESS", "message": "Konuşmacı etiketi başarıyla güncellendi."}
+
+
+@router.delete("/jobs/{job_id}/utterances/{utterance_index}")
+def delete_utterance(
+    job_id: str,
+    utterance_index: int,
+    repository: ITranscriptRepository = Depends(get_repository),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    """
+    Kullanıcının Arayüzden (UI) seçtiği konuşmacı kartını/kutusunu silmesini sağlar.
+    """
+    try:
+        record_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
+
+    success = repository.delete_utterance(record_id=record_uuid, utterance_index=utterance_index)
+    if not success:
+        raise HTTPException(status_code=404, detail="Silinecek cümle bulunamadı.")
+
+    return {"status": "SUCCESS", "message": "Konuşmacı bloğu başarıyla silindi."}
+
+
+@router.post("/jobs/{job_id}/utterances")
+def create_utterance(
+    job_id: str,
+    req: UtteranceCreateRequest,
+    repository: ITranscriptRepository = Depends(get_repository),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    """
+    Kullanıcının Arayüzden (UI) yeni bir konuşmacı kartı/kutusu eklemesini sağlar.
+    """
+    try:
+        record_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
+
+    new_u = TranscriptUtterance(
+        id=uuid.uuid4(),
+        speaker_id=req.speaker_id,
+        start_time=req.start_time,
+        end_time=req.end_time,
+        text=req.text,
+    )
+    success = repository.add_utterance(record_id=record_uuid, utterance=new_u)
+    if not success:
+        raise HTTPException(status_code=404, detail="Ses görevi bulunamadı.")
+
+    return {"status": "SUCCESS", "message": "Yeni konuşmacı bloğu başarıyla eklendi."}
