@@ -48,3 +48,16 @@ python run_analysis.py --audio storage/raw/ornek_ses.wav
 ```bash
 pytest
 ```
+
+### 5. Rust PyO3 Native DSP Performans Modülü (Opsiyonel)
+Sistem, Rust ile yazılmış C-hızında 0-latency DSP (resampling, VAD energy, cosine similarity) modülüne sahiptir (`native/` klasörü). 
+Rust compiler (`cargo`) sisteminizde yüklüyse native modülü derleyebilirsiniz:
+
+```bash
+# Maturin aracını yükleyin ve Rust C-extension modülünü derleyin
+pip install maturin
+maturin develop --manifest-path native/Cargo.toml
+```
+
+*Not: Rust derlenmediğinde sistem otomatik olarak NumPy tabanlı Python fallback modülünü çalıştırır.*
+

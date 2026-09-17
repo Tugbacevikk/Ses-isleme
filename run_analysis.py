@@ -135,8 +135,12 @@ def main():
 
 
 
-    from audio_analyzer.adapters.audio.audio_converter import AudioConverterProcessor
-    audio_processor = AudioConverterProcessor()
+    from audio_analyzer.adapters.audio.rust_dsp_adapter import RustAudioDSPProcessor
+    audio_processor = RustAudioDSPProcessor()
+    if audio_processor.using_rust:
+        print("      - Audio DSP                : [RUST PyO3 NATIVE NATIVE_AUDIO_DSP C-EXTENSION AKTİF]")
+    else:
+        print("      - Audio DSP                : [PYTHON NUMPY FALLBACK AKTİF]")
 
     pipeline = AudioAnalysisPipeline(
         stt_engine=stt_engine,

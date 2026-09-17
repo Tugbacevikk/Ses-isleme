@@ -5,7 +5,7 @@ from audio_analyzer.services.semantic_refiner import SemanticRefiner
 
 
 def test_semantic_refiner_splits_merged_utterance():
-    refiner = SemanticRefiner()
+    refiner = SemanticRefiner(domain_mode="call_center")
 
     # Müşteri şikayeti ve Temsilci kapanışının tek bir SPEAKER_00 bloğunda birleştiği durum
     merged_text = (

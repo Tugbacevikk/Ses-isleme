@@ -60,7 +60,8 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
     else:
         diarizer = speechbrain_diarizer
 
-    audio_processor = AudioConverterProcessor()
+    from audio_analyzer.adapters.audio.rust_dsp_adapter import RustAudioDSPProcessor
+    audio_processor = RustAudioDSPProcessor()
     vad_processor = SileroVADProcessor()
 
     _cached_pipeline = AudioAnalysisPipeline(
