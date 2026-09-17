@@ -30,10 +30,10 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 
+from audio_analyzer.adapters.repository.unit_of_work import SqlAlchemyUnitOfWork
 from audio_analyzer.domain.models import DeviceConfig
 from audio_analyzer.adapters.repository.models import Base
 from audio_analyzer.adapters.storage.local_storage_adapter import LocalStorageAdapter
-from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
 from audio_analyzer.services.fusion_engine import FusionEngine
 from audio_analyzer.services.pipeline import AudioAnalysisPipeline
 from audio_analyzer.services.job_service import JobService
@@ -76,14 +76,14 @@ def main():
     print(f"      - Hassasiyet (Compute Type)  : {device_config.compute_type}")
     print(f"      - GPU İndeksi               : {device_config.device_index}")
 
-    # 2. Veritabanı ve Klasör Kurulumu
+    # 2. Veritabanı ve UoW Kurulumu
     database_url = os.getenv("DATABASE_URL", "sqlite:///storage/dev_database.db")
     connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
     engine = create_engine(database_url, echo=False, connect_args=connect_args)
     Base.metadata.create_all(bind=engine)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    session = SessionLocal()
-    print(f"\n[2/5] VERİTABANI İŞLEMLERİ:")
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    uow = SqlAlchemyUnitOfWork(session_factory=session_factory)
+    print(f"\n[2/5] VERİTABANI İŞLEMLERİ (Unit-of-Work):")
     print(f"      - Veritabanı URL           : {database_url}")
     print(f"      - Veritabanı Tabloları      : audio_records, transcript_utterances [HAZIR]")
 
@@ -104,10 +104,9 @@ def main():
     with open(target_audio_file, "rb") as f:
         audio_bytes = f.read()
 
-    # 4. Modül ve Adaptörlerin Başlatılması (Dependency Injection)
+    # 4. Modül ve Adaptörlerin Başlatılması (Clean Architecture)
     print(f"\n[4/5] SİSTEM ADAPTÖRLERİ BİRLEŞTİRİLİYOR (Clean Architecture):")
     storage = LocalStorageAdapter(base_dir="storage/raw")
-    repository = PostgresRepository(session=session)
 
     # 4.1 STT Engine (FasterWhisper)
     try:
@@ -123,7 +122,7 @@ def main():
         else:
             raise RuntimeError(f"STT Motoru (FasterWhisper) yüklenemedi: {e}. Lütfen faster-whisper bağımlılığını veya ALLOW_MOCK_STT=true ayarını kontrol edin.")
 
-    # 4.2 Diarization Engine (SpeechBrain ECAPA-TDNN %100 Çevrimdışı Derin Sinir Ağı)
+    # 4.2 Diarization Engine
     try:
         from audio_analyzer.adapters.diarization.speechbrain_adapter import SpeechBrainECAPADiarizer
         diarizer = SpeechBrainECAPADiarizer(device_config=device_config)
@@ -132,8 +131,6 @@ def main():
         from audio_analyzer.adapters.diarization.cluster_diarizer import LocalSpectralClusterDiarizer
         diarizer = LocalSpectralClusterDiarizer(device_config=device_config)
         print(f"      - Diarizer                 : [YEREL AKUSTİK KÜMELEYİCİ AKTİF - {e}]")
-
-
 
     from audio_analyzer.adapters.audio.rust_dsp_adapter import RustAudioDSPProcessor
     audio_processor = RustAudioDSPProcessor()
@@ -149,58 +146,58 @@ def main():
         fusion_engine=FusionEngine(max_silence_threshold=3.0),
     )
 
-    job_service = JobService(
-        storage=storage,
-        repository=repository,
-        pipeline=pipeline,
-    )
-
-    # 5. Görev Oluşturma ve Yürütme (Job Lifecycle)
-    print(f"\n[5/5] SES ANALİZ GÖREVİ ÇALIŞTIRILIYOR:")
+    # 5. Görev Oluşturma ve Yürütme (UnitOfWork Context Manager)
+    print(f"\n[5/5] SES ANALİZ GÖREVİ ÇALIŞTIRILIYOR (UoW):")
     filename = Path(target_audio_file).name
-    job_id = job_service.create_job(file_name=filename, file_bytes=audio_bytes)
-    print(f"      - Oluşturulan İş ID (job_id): {job_id} [Durum: PENDING]")
 
-    print(f"      - Worker Görevi Yürütülüyor...")
-    success = job_service.execute_job(job_id)
+    with uow:
+        job_service = JobService(
+            storage=storage,
+            repository=uow.repository,
+            pipeline=pipeline,
+        )
 
-    if success:
-        record = repository.get_record_by_id(job_id)
-        print("\n" + "=" * 80)
-        print("                        ANALİZ BAŞARIYLA TAMAMLANDI!")
-        print("=" * 80)
-        print(f"  * Kayıt ID         : {record.id}")
-        print(f"  * Dosya Adı        : {record.file_name}")
-        print(f"  * Tespit Edilen Dil: {record.language or 'tr'}")
-        print(f"  * Durum            : {record.status.value}")
-        print(f"  * Konuşmacı Bloğu  : {len(record.utterances)} Adet Utterance\n")
+        job_id = job_service.create_job(file_name=filename, file_bytes=audio_bytes)
+        print(f"      - Oluşturulan İş ID (job_id): {job_id} [Durum: PENDING]")
 
-        print("--- KONUŞMACI VE ZAMAN DAMGALI METİN ÇIKTISI ---")
-        out_list = []
-        for u in record.utterances:
-            time_str = f"[{u.start_time:05.2f}s - {u.end_time:05.2f}s]"
-            print(f"  {time_str} {u.speaker_id:12s} : {u.text}")
-            out_list.append({
-                "speaker": u.speaker_id,
-                "start": u.start_time,
-                "end": u.end_time,
-                "text": u.text
-            })
+        print(f"      - Worker Görevi Yürütülüyor...")
+        success = job_service.execute_job(job_id)
 
-        # JSON çıktısını dışa aktarma
-        json_output_path = Path("storage/processed/analysis_result.json")
-        json_output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(json_output_path, "w", encoding="utf-8") as jf:
-            json.dump(out_list, jf, ensure_ascii=False, indent=2)
+        if success:
+            record = uow.repository.get_record_by_id(job_id)
+            print("\n" + "=" * 80)
+            print("                        ANALİZ BAŞARIYLA TAMAMLANDI!")
+            print("=" * 80)
+            print(f"  * Kayıt ID         : {record.id}")
+            print(f"  * Dosya Adı        : {record.file_name}")
+            print(f"  * Tespit Edilen Dil: {record.language or 'tr'}")
+            print(f"  * Durum            : {record.status.value}")
+            print(f"  * Konuşmacı Bloğu  : {len(record.utterances)} Adet Utterance\n")
 
-        print(f"\n  [+] Detaylı JSON çıktısı kaydedildi: {json_output_path.absolute()}")
-        print("=" * 80 + "\n")
-    else:
-        record = repository.get_record_by_id(job_id)
-        print(f"\n  [!] HATA: Analiz başarısız oldu! Durum: {record.status.value}")
-        print(f"  [!] Detay: {record.error_message}")
+            print("--- KONUŞMACI VE ZAMAN DAMGALI METİN ÇIKTISI ---")
+            out_list = []
+            for u in record.utterances:
+                time_str = f"[{u.start_time:05.2f}s - {u.end_time:05.2f}s]"
+                print(f"  {time_str} {u.speaker_id:12s} : {u.text}")
+                out_list.append({
+                    "speaker": u.speaker_id,
+                    "start": u.start_time,
+                    "end": u.end_time,
+                    "text": u.text
+                })
 
-    session.close()
+            # JSON çıktısını dışa aktarma
+            json_output_path = Path("storage/processed/analysis_result.json")
+            json_output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(json_output_path, "w", encoding="utf-8") as jf:
+                json.dump(out_list, jf, ensure_ascii=False, indent=2)
+
+            print(f"\n  [+] Detaylı JSON çıktısı kaydedildi: {json_output_path.absolute()}")
+            print("=" * 80 + "\n")
+        else:
+            record = uow.repository.get_record_by_id(job_id)
+            print(f"\n  [!] HATA: Analiz başarısız oldu! Durum: {record.status.value}")
+            print(f"  [!] Detay: {record.error_message}")
 
 
 if __name__ == "__main__":

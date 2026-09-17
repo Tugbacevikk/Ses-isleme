@@ -1,5 +1,6 @@
 # Ses Analizi Sistemi (Speech-to-Text & Speaker Diarization)
 
+[![CI Pipeline](https://github.com/Tugbacevikk/SesAnalizi/actions/workflows/ci.yml/badge.svg)](https://github.com/Tugbacevikk/SesAnalizi/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
