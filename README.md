@@ -1,14 +1,38 @@
 # Ses Analizi Sistemi (Speech-to-Text & Speaker Diarization)
 
+[![CI/CD Pipeline](https://github.com/Tugbacevikk/SesAnalizi/actions/workflows/ci.yml/badge.svg)](https://github.com/Tugbacevikk/SesAnalizi/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
+
 Yüksek performanslı, modüler, **Clean Architecture / Code-First** prensiplerine uygun olarak tasarlanmış ses analiz sistemi.
 
 ## Özellikler
-- **Speech-to-Text (STT)**: Faster-Whisper ile zaman damgalı metne dönüştürme.
-- **Speaker Diarization**: PyAnnote 3.1 & SpeechBrain ECAPA-TDNN ile %100 çevrimdışı konuşmacı ayrıştırma.
-- **Fusion Engine**: IoU ve Midpoint çakışma çözümleme algoritması + 1.5s Sessizlik eşiği.
+- **Speech-to-Text (STT)**: Faster-Whisper ile zaman damgalı metne dönüştürme (`tiny`, `small`, `medium` model desteği).
+- **Çok Kademeli Speaker Diarization (Fallback Chain)**:
+  - **1. Kademe**: SOTA PyAnnote 3.1 (HuggingFace Gated Model).
+  - **2. Kademe**: SpeechBrain ECAPA-TDNN (%100 Çevrimdışı & Token-Free).
+  - **3. Kademe**: Local Spectral Clustering (Tamamen yerel akustik kümeleme).
+- **SemanticRefiner & Yerel LLM Entegrasyonu**:
+  - Alan Odaklı Kurallar (`domain_mode="call_center"` ile müşteri/temsilci geçiş tespiti).
+  - Opsiyonel yerel Ollama LLM (`llama3.2` / `qwen2.5`) entegrasyonu ile konuşmacı metinlerinin anlamsal iyileştirilmesi.
+- **Fusion Engine**: IoU ve Midpoint çakışma çözümleme algoritması + 1.5s sessizlik eşiği.
 - **Voice Activity Detection (VAD)**: Silero VAD ile gürültü ve sessizlik halüsinasyon filtrelemesi.
+- **Rust PyO3 Native DSP Accelerator**: Rust ile yazılmış C-hızında sıfır gecikmeli resample, VAD ve kosinüs benzerliği modülü.
 - **Asenkron Job Queue**: Redis + Celery ve FastAPI BackgroundTasks ile non-blocking HTTP 202 istek işleme.
 - **Sıcak Yükleme (Warm-Loading)**: Singleton AI Pipeline ile hızlı ve düşük gecikmeli analiz.
+
+## HuggingFace & Diarization Yapılandırması
+
+PyAnnote 3.1 (1. Kademe) kullanmak için:
+1. [HuggingFace Tokens](https://huggingface.co/settings/tokens) adresinden `Read` izinli bir erişim anahtarı oluşturun.
+2. `.env` dosyanıza `HF_TOKEN=hf_...` olarak ekleyin.
+3. Aşağıdaki 3 model sayfasındaki kullanım şartlarını onaylayın:
+   - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
+   - [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
+   - [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
+
+> ℹ️ **Otomatik Kademeli Fallback Güvencesi**: `HF_TOKEN` girilmediğinde veya model erişim izni bulunmadığında sistem çökmez; otomatik olarak 2. Kademe (**SpeechBrain ECAPA-TDNN**) veya 3. Kademe (**Local Spectral Cluster**) motoruna geçerek analizi kesintisiz tamamlar.
 
 ## Kurulum ve Başlatma
 
