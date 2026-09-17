@@ -78,6 +78,11 @@ class ITranscriptRepository(ABC):
         """Tüm ses kayıtlarını tarihe göre tersten sıralı ve sayfalamalı getirir."""
         pass
 
+    @abstractmethod
+    def delete_record(self, record_id: uuid.UUID) -> bool:
+        """Ses kaydını ve bağlı tüm konuşmacı metinlerini veritabanından siler."""
+        pass
+
 
 class IUnitOfWork(ABC):
     """Unit of Work (İş Birimi) İşlem ve Transaction Yönetimi Arayüzü."""

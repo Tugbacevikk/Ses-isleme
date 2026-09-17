@@ -164,6 +164,18 @@ class PostgresRepository(ITranscriptRepository):
         )
         return [self._to_domain(r) for r in orm_records]
 
+    def delete_record(self, record_id: uuid.UUID) -> bool:
+        orm_model = (
+            self.session.query(AudioRecordModel)
+            .filter(AudioRecordModel.id == record_id)
+            .first()
+        )
+        if not orm_model:
+            return False
+        self.session.delete(orm_model)
+        self._commit_or_flush()
+        return True
+
     def _to_domain(self, orm: AudioRecordModel) -> AudioRecord:
         domain_utterances = [
             TranscriptUtterance(

@@ -241,6 +241,37 @@ def get_job_audio_file(job_id: str, repository: ITranscriptRepository = Depends(
     return FileResponse(path=local_path, media_type=media_type, filename=record.file_name)
 
 
+@router.delete("/jobs/{job_id}")
+def delete_job(
+    job_id: str,
+    repository: ITranscriptRepository = Depends(get_repository),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    """
+    Tüm ses analizi görevini, ilişkili veritabanı kayıtlarını ve fiziksel ses dosyasını siler.
+    """
+    try:
+        record_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
+
+    record = repository.get_record_by_id(record_uuid)
+    if not record:
+        raise HTTPException(status_code=404, detail="Ses analizi görevi bulunamadı.")
+
+    storage = LocalStorageAdapter(base_dir="storage/raw")
+    try:
+        storage.delete(record.storage_uri)
+    except Exception as ex:
+        print(f"File delete note: {ex}")
+
+    success = repository.delete_record(record_uuid)
+    if not success:
+        raise HTTPException(status_code=404, detail="Görevi veritabanından silme başarısız.")
+
+    return {"status": "SUCCESS", "message": "Ses analizi kaydı ve dosyası başarıyla silindi."}
+
+
 @router.put("/jobs/{job_id}/utterances/{utterance_index}")
 def update_utterance_speaker(
     job_id: str,
