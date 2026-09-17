@@ -85,7 +85,9 @@ class FusionEngine:
             # Bölümleme kriterleri: Konuşmacı değişimi VEYA 1.5s üzerindeki sessizlik
             if speaker != current_speaker or silence_gap > self.max_silence_threshold:
                 # Mevcut bloğu sonlandırıp listeye ekle
-                utterances.append(self._create_utterance(current_speaker, current_words))
+                utt = self._create_utterance(current_speaker, current_words)
+                if utt.text.strip():
+                    utterances.append(utt)
                 current_speaker = speaker
                 current_words = [word]
             else:
@@ -93,7 +95,9 @@ class FusionEngine:
 
         # Son kalan bloğu ekle
         if current_words:
-            utterances.append(self._create_utterance(current_speaker, current_words))
+            utt = self._create_utterance(current_speaker, current_words)
+            if utt.text.strip():
+                utterances.append(utt)
 
         return utterances
 

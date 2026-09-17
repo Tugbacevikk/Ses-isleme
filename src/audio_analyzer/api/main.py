@@ -243,20 +243,95 @@ def update_utterance_speaker(
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    repository = PostgresRepository(session=db)
-    record = repository.get_record_by_id(record_uuid)
+    from audio_analyzer.adapters.repository.models import TranscriptUtteranceModel
+    orm_utterances = (
+        db.query(TranscriptUtteranceModel)
+        .filter(TranscriptUtteranceModel.audio_record_id == record_uuid)
+        .order_by(TranscriptUtteranceModel.start_time.asc())
+        .all()
+    )
 
-    if not record or not record.utterances:
-        raise HTTPException(status_code=404, detail="Ses görevi veya cümleler bulunamadı.")
+    if not orm_utterances or utterance_index < 0 or utterance_index >= len(orm_utterances):
+        raise HTTPException(status_code=404, detail="Güncellenecek cümle bulunamadı.")
 
-    if utterance_index < 0 or utterance_index >= len(record.utterances):
-        raise HTTPException(status_code=400, detail="Geçersiz cümle indeksi.")
-
-    record.utterances[utterance_index].speaker_id = req.speaker_id
-    record.utterances[utterance_index].text = req.text
+    orm_utterances[utterance_index].speaker_id = req.speaker_id
+    orm_utterances[utterance_index].text = req.text
     db.commit()
 
     return {"status": "SUCCESS", "message": "Konuşmacı etiketi başarıyla güncellendi."}
+
+
+@app.delete("/api/v1/jobs/{job_id}/utterances/{utterance_index}")
+def delete_utterance(
+    job_id: str,
+    utterance_index: int,
+    db: Session = Depends(get_db),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    """
+    Kullanıcının Arayüzden (UI) seçtiği konuşmacı kartını/kutusunu silmesini sağlar.
+    """
+    try:
+        record_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
+
+    from audio_analyzer.adapters.repository.models import TranscriptUtteranceModel
+    orm_utterances = (
+        db.query(TranscriptUtteranceModel)
+        .filter(TranscriptUtteranceModel.audio_record_id == record_uuid)
+        .order_by(TranscriptUtteranceModel.start_time.asc())
+        .all()
+    )
+
+    if not orm_utterances or utterance_index < 0 or utterance_index >= len(orm_utterances):
+        raise HTTPException(status_code=404, detail="Silinecek cümle bulunamadı.")
+
+    db.delete(orm_utterances[utterance_index])
+    db.commit()
+
+    return {"status": "SUCCESS", "message": "Konuşmacı bloğu başarıyla silindi."}
+
+
+class UtteranceCreateRequest(BaseModel):
+    speaker_id: str
+    start_time: float
+    end_time: float
+    text: str
+
+
+@app.post("/api/v1/jobs/{job_id}/utterances")
+def create_utterance(
+    job_id: str,
+    req: UtteranceCreateRequest,
+    db: Session = Depends(get_db),
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    """
+    Kullanıcının Arayüzden (UI) yeni bir konuşmacı kartı/kutusu eklemesini sağlar.
+    """
+    try:
+        record_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
+
+    from audio_analyzer.adapters.repository.models import TranscriptUtteranceModel, AudioRecordModel
+    record = db.query(AudioRecordModel).filter(AudioRecordModel.id == record_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Ses görevi bulunamadı.")
+
+    new_u = TranscriptUtteranceModel(
+        id=uuid.uuid4(),
+        audio_record_id=record_uuid,
+        speaker_id=req.speaker_id,
+        start_time=req.start_time,
+        end_time=req.end_time,
+        text=req.text,
+    )
+    db.add(new_u)
+    db.commit()
+
+    return {"status": "SUCCESS", "message": "Yeni konuşmacı bloğu başarıyla eklendi."}
 
 
 @app.get("/api/v1/jobs/{job_id}", response_model=JobStatusResponse)

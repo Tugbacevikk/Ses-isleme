@@ -419,13 +419,77 @@
                     </div>
                     <div id="text-${index}" class="utterance-text" contenteditable="true" style="outline: 1px dashed rgba(139, 92, 246, 0.5); padding: 0.75rem; border-radius: 0.5rem; background: rgba(15, 23, 42, 0.6); margin-top: 0.5rem; min-height: 40px;" onblur="updateText('${job.job_id}', ${index}, '${u.speaker_id}', this.innerText)">${u.text}</div>
                     <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
+                        <button style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;" onclick="deleteUtterance('${job.job_id}', ${index})">🗑️ Kutuyu Sil</button>
                         <button style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;" onclick="saveCardEdits('${job.job_id}', ${index})">💾 Değişikliği Kaydet</button>
                     </div>
                 `;
                 utteranceList.appendChild(card);
             });
 
+            // Ekleme Butonu Paneli
+            const addPanel = document.createElement('div');
+            addPanel.style.marginTop = '1.5rem';
+            addPanel.style.display = 'flex';
+            addPanel.style.justify = 'center';
+            addPanel.innerHTML = `
+                <button style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 0.6rem 1.5rem; border-radius: 0.5rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);" onclick="addNewUtterance('${job.job_id}')">➕ Yeni Konuşmacı Bloğu Ekle</button>
+            `;
+            utteranceList.appendChild(addPanel);
+
             resultsSection.style.display = 'block';
+        }
+
+        async function fetchAndRefresh(jobId) {
+            try {
+                const res = await fetch(`/api/v1/jobs/${jobId}`);
+                const job = await res.json();
+                renderResults(job);
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function deleteUtterance(jobId, index) {
+            if (!confirm('Bu konuşmacı kutusunu silmek istediğinize emin misiniz?')) return;
+            try {
+                const res = await fetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
+                    method: 'DELETE'
+                });
+                if (res.ok) {
+                    await fetchAndRefresh(jobId);
+                } else {
+                    alert('Silme işlemi başarısız!');
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function addNewUtterance(jobId) {
+            const speakerId = prompt('Konuşmacı Kodu (Örn: SPEAKER_00, SPEAKER_01):', 'SPEAKER_00');
+            if (!speakerId) return;
+            const text = prompt('Metin içeriği:', '');
+            if (text === null) return;
+
+            try {
+                const res = await fetch(`/api/v1/jobs/${jobId}/utterances`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        speaker_id: speakerId,
+                        start_time: 0.0,
+                        end_time: 0.0,
+                        text: text
+                    })
+                });
+                if (res.ok) {
+                    await fetchAndRefresh(jobId);
+                } else {
+                    alert('Yeni blok ekleme başarısız!');
+                }
+            } catch (err) {
+                console.error(err);
+            }
         }
 
         async function updateSpeaker(jobId, index, newSpeaker) {
@@ -437,7 +501,6 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ speaker_id: newSpeaker, text: text })
                 });
-                alert('Konuşmacı atanması başarıyla güncellendi!');
             } catch (err) {
                 console.error(err);
             }
