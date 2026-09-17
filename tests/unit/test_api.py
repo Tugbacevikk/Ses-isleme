@@ -124,3 +124,13 @@ def test_api_key_authorization_on_read_and_write_endpoints(monkeypatch):
     # 3. Doğru API Key ile erişim
     res_valid = client.get("/api/v1/jobs", headers={"X-API-Key": "secret-test-key"})
     assert res_valid.status_code == 200
+
+
+@pytest.mark.unit
+def test_health_check_endpoint():
+    """GET /health liveness probe endpoint'ini doğrular."""
+    res = client.get("/health")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "HEALTHY"
+    assert data["database"] == "OK"

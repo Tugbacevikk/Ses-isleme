@@ -73,6 +73,29 @@ async def favicon():
     return Response(status_code=204)
 
 
+@app.get("/health")
+def health_check():
+    """
+    Sistem Sağlık ve Kullanılabilirlik (Liveness/Readiness Probe) Kontrolü.
+    Veritabanı bağlantısı ve genel uygulama durumunu kontrol eder.
+    """
+    db_status = "OK"
+    try:
+        from sqlalchemy import text
+
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as e:
+        db_status = f"ERROR: {e}"
+
+    is_healthy = db_status == "OK"
+    return Response(
+        content=f'{{"status": "{ "HEALTHY" if is_healthy else "UNHEALTHY" }", "database": "{db_status}"}}',
+        media_type="application/json",
+        status_code=200 if is_healthy else 503,
+    )
+
+
 def start():
     """Uvicorn sunucusu üzerinden FastAPI API'sini başlatır."""
     import uvicorn
