@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
-from audio_analyzer.adapters.storage.local_storage_adapter import LocalStorageAdapter
+from audio_analyzer.adapters.storage.storage_factory import get_storage_adapter
 from audio_analyzer.api.dependencies import SessionLocal, get_repository, get_uow
 from audio_analyzer.domain.interfaces import ITranscriptRepository
 from audio_analyzer.domain.models import TranscriptUtterance
@@ -47,7 +47,7 @@ def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
     Sıcak yüklenmiş (Warm-loaded) önbellekteki tekil yapay zeka pipeline nesnesini ve UnitOfWork kullanır.
     """
     try:
-        storage = LocalStorageAdapter(base_dir="storage/raw")
+        storage = get_storage_adapter()
         uow = get_uow()
         with uow:
             from audio_analyzer.services.pipeline_factory import get_shared_pipeline
@@ -129,7 +129,7 @@ async def upload_and_analyze_audio(
             detail=f"Dosya boyutu çok büyük ({len(file_bytes) / (1024 * 1024):.1f} MB). Maksimum izin verilen limit: 100 MB.",
         )
 
-    storage = LocalStorageAdapter(base_dir="storage/raw")
+    storage = get_storage_adapter()
     job_service = JobService(storage=storage, repository=repository)
     job_id = job_service.create_job(file_name=file.filename, file_bytes=file_bytes)
 
@@ -246,7 +246,7 @@ def get_job_audio_file(
     if not record:
         raise HTTPException(status_code=404, detail="Ses analizi görevi bulunamadı.")
 
-    storage = LocalStorageAdapter(base_dir="storage/raw")
+    storage = get_storage_adapter()
     local_path = storage.get_path(record.storage_uri)
 
     if not os.path.exists(local_path):
@@ -277,7 +277,7 @@ def delete_job(
     if not record:
         raise HTTPException(status_code=404, detail="Ses analizi görevi bulunamadı.")
 
-    storage = LocalStorageAdapter(base_dir="storage/raw")
+    storage = get_storage_adapter()
     try:
         storage.delete(record.storage_uri)
     except Exception as ex:

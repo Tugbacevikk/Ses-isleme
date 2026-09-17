@@ -30,10 +30,10 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 
-from audio_analyzer.adapters.repository.unit_of_work import SqlAlchemyUnitOfWork
-from audio_analyzer.domain.models import DeviceConfig
 from audio_analyzer.adapters.repository.models import Base
-from audio_analyzer.adapters.storage.local_storage_adapter import LocalStorageAdapter
+from audio_analyzer.adapters.repository.unit_of_work import SqlAlchemyUnitOfWork
+from audio_analyzer.adapters.storage.storage_factory import get_storage_adapter
+from audio_analyzer.domain.models import DeviceConfig
 from audio_analyzer.services.fusion_engine import FusionEngine
 from audio_analyzer.services.pipeline import AudioAnalysisPipeline
 from audio_analyzer.services.job_service import JobService
@@ -106,7 +106,7 @@ def main():
 
     # 4. Modül ve Adaptörlerin Başlatılması (Clean Architecture)
     print(f"\n[4/5] SİSTEM ADAPTÖRLERİ BİRLEŞTİRİLİYOR (Clean Architecture):")
-    storage = LocalStorageAdapter(base_dir="storage/raw")
+    storage = get_storage_adapter()
 
     # 4.1 STT Engine (FasterWhisper)
     try:
