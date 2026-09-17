@@ -1,3 +1,4 @@
+import logging
 import mimetypes
 import os
 import secrets
@@ -15,6 +16,8 @@ from audio_analyzer.api.dependencies import get_repository, get_uow, SessionLoca
 from audio_analyzer.domain.interfaces import ITranscriptRepository
 from audio_analyzer.domain.models import TranscriptUtterance
 from audio_analyzer.services.job_service import JobService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["Jobs & Analysis"])
 
@@ -54,7 +57,7 @@ def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
             job_service = JobService(storage=storage, repository=uow.repository, pipeline=pipeline)
             job_service.execute_job(uuid.UUID(job_id_str))
     except Exception as ex:
-        print(f"Background task execution error: {ex}")
+        logger.error("Background task execution error: %s", ex, exc_info=True)
 
 
 # --- Schemas ---
@@ -136,7 +139,7 @@ async def upload_and_analyze_audio(
             from audio_analyzer.workers.tasks import process_audio_task
             process_audio_task.delay(str(job_id))
         except Exception as e:
-            print(f"Celery delay dispatch note: {e}, falling back to BackgroundTasks")
+            logger.warning("Celery delay dispatch note: %s, falling back to BackgroundTasks", e)
             background_tasks.add_task(run_pipeline_background, str(job_id), file.filename, file_bytes)
     else:
         background_tasks.add_task(run_pipeline_background, str(job_id), file.filename, file_bytes)
@@ -275,7 +278,7 @@ def delete_job(
     try:
         storage.delete(record.storage_uri)
     except Exception as ex:
-        print(f"File delete note: {ex}")
+        logger.warning("File delete note: %s", ex)
 
     success = repository.delete_record(record_uuid)
     if not success:

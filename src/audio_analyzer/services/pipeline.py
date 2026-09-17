@@ -1,9 +1,12 @@
+import logging
 from typing import List, Tuple, Optional
 from pathlib import Path
 from audio_analyzer.domain.interfaces import ISTTEngine, IDiarizer, IAudioProcessor, IVADProcessor
 from audio_analyzer.domain.models import TranscriptUtterance
 from audio_analyzer.services.fusion_engine import FusionEngine
 from audio_analyzer.services.semantic_refiner import SemanticRefiner
+
+logger = logging.getLogger(__name__)
 
 
 class AudioAnalysisPipeline:
@@ -55,7 +58,7 @@ class AudioAnalysisPipeline:
                 try:
                     speech_timestamps = self.vad_processor.get_speech_timestamps(working_path)
                 except Exception as e:
-                    print(f"[UYARI] VAD İşleme Hatası: {e}. VAD filtresi atlanıyor.")
+                    logger.warning("VAD İşleme Hatası: %s. VAD filtresi atlanıyor.", e)
 
             # 3. STT ile kelime seviyesi metin çıkarma ve dil tespiti
             words, detected_language = self.stt_engine.transcribe(working_path)
@@ -79,7 +82,7 @@ class AudioAnalysisPipeline:
                 try:
                     Path(created_temp_file).unlink()
                 except Exception as cleanup_err:
-                    print(f"[UYARI] Geçici ses dosyası temizleme uyarısı: {cleanup_err}")
+                    logger.warning("Geçici ses dosyası temizleme uyarısı: %s", cleanup_err)
 
     def _filter_words_with_vad(
         self, words: List, speech_timestamps: List[Tuple[float, float]], tolerance: float = 0.3

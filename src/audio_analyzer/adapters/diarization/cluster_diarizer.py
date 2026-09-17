@@ -1,7 +1,10 @@
+import logging
 import numpy as np
 from typing import List
 from audio_analyzer.domain.interfaces import IDiarizer
 from audio_analyzer.domain.models import DiarizationSegment, DeviceConfig
+
+logger = logging.getLogger(__name__)
 
 
 class LocalSpectralClusterDiarizer(IDiarizer):
@@ -251,7 +254,7 @@ class LocalSpectralClusterDiarizer(IDiarizer):
 
 
         except Exception as e:
-            print(f"LocalSpectralClusterDiarizer error: {e}")
+            logger.error("LocalSpectralClusterDiarizer error: %s", e, exc_info=True)
             return [DiarizationSegment(speaker_id="SPEAKER_00", start_time=0.0, end_time=300.0)]
 
 

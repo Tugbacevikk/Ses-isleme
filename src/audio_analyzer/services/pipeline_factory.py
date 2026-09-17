@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Optional
 
@@ -8,6 +9,8 @@ from audio_analyzer.adapters.audio.silero_vad import SileroVADProcessor
 from audio_analyzer.services.fusion_engine import FusionEngine
 from audio_analyzer.services.semantic_refiner import SemanticRefiner
 from audio_analyzer.services.pipeline import AudioAnalysisPipeline
+
+logger = logging.getLogger(__name__)
 
 _cached_pipeline: Optional[AudioAnalysisPipeline] = None
 
@@ -36,7 +39,7 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
     except Exception as e:
         allow_mock = os.getenv("ALLOW_MOCK_STT", "false").lower() == "true"
         if allow_mock:
-            print(f"[WARM-LOADER UYARI] FasterWhisper yüklenemedi ({e}). ALLOW_MOCK_STT=true olduğu için MockSTTAdapter kullanılıyor.")
+            logger.warning("FasterWhisper yüklenemedi (%s). ALLOW_MOCK_STT=true olduğu için MockSTTAdapter kullanılıyor.", e)
             from audio_analyzer.adapters.stt.mock_stt_adapter import MockSTTAdapter
             stt_engine = MockSTTAdapter()
         else:
@@ -55,7 +58,7 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
             primary_pyannote = PyAnnoteAdapter(auth_token=hf_token, device_config=device_config)
             diarizer = FallbackDiarizer(primary=primary_pyannote, fallback=speechbrain_diarizer)
         except Exception as e:
-            print(f"[WARM-LOADER UYARI] PyAnnoteAdapter yüklenemedi: {e}. Doğrudan SpeechBrain kullanılıyor.")
+            logger.warning("PyAnnoteAdapter yüklenemedi: %s. Doğrudan SpeechBrain kullanılıyor.", e)
             diarizer = speechbrain_diarizer
     else:
         diarizer = speechbrain_diarizer

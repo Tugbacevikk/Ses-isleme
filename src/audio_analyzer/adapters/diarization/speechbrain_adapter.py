@@ -1,8 +1,11 @@
+import logging
 import numpy as np
 import torch
 from typing import List, Optional
 from audio_analyzer.domain.interfaces import IDiarizer
 from audio_analyzer.domain.models import DiarizationSegment, DeviceConfig
+
+logger = logging.getLogger(__name__)
 
 
 class SpeechBrainECAPADiarizer(IDiarizer):
@@ -128,6 +131,6 @@ class SpeechBrainECAPADiarizer(IDiarizer):
             return segments
 
         except Exception as e:
-            print(f"SpeechBrainECAPADiarizer error, fallback: {e}")
+            logger.warning("SpeechBrainECAPADiarizer error, fallback: %s", e)
             from audio_analyzer.adapters.diarization.cluster_diarizer import LocalSpectralClusterDiarizer
             return LocalSpectralClusterDiarizer(device_config=self.device_config).diarize(audio_path)

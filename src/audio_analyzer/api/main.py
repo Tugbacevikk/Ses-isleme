@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from dotenv import load_dotenv
@@ -12,6 +13,12 @@ from audio_analyzer.api.routers import jobs
 
 load_dotenv()
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,7 +32,7 @@ async def lifespan(app: FastAPI):
         from audio_analyzer.services.pipeline_factory import get_shared_pipeline
         get_shared_pipeline()
     except Exception as e:
-        print(f"[LIFESPAN UYARI] Model ön yükleme uyarısı: {e}")
+        logger.warning("Model ön yükleme uyarısı: %s", e)
     
     yield
 

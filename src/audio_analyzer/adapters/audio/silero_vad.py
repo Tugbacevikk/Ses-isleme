@@ -1,8 +1,11 @@
+import logging
 import numpy as np
 import torch
 import soundfile as sf
 from typing import List, Tuple
 from audio_analyzer.domain.interfaces import IVADProcessor
+
+logger = logging.getLogger(__name__)
 
 
 class SileroVADProcessor(IVADProcessor):
@@ -29,7 +32,7 @@ class SileroVADProcessor(IVADProcessor):
                 )
                 self._model = model
             except Exception as e:
-                print(f"Silero VAD model torch hub load note: {e}. Using Energy VAD fallback.")
+                logger.warning("Silero VAD model torch hub load note: %s. Using Energy VAD fallback.", e)
                 self._model = "ENERGY_FALLBACK"
 
     def get_speech_timestamps(
@@ -62,7 +65,7 @@ class SileroVADProcessor(IVADProcessor):
                 )
                 return [(round(ts['start'] / 16000, 2), round(ts['end'] / 16000, 2)) for ts in timestamps]
             except Exception as ex:
-                print(f"Silero VAD execution fallback: {ex}")
+                logger.warning("Silero VAD execution fallback: %s", ex)
 
         # Fallback: High-precision energy-based silence detection (Rust DSP compatible)
         return self._energy_vad_chunking(data, sr, min_silence_duration_ms)
