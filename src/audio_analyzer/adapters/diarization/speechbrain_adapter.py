@@ -20,10 +20,11 @@ class SpeechBrainECAPADiarizer(IDiarizer):
 
     def _load_classifier(self):
         if self._classifier is None:
+            import os
+            os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
             from speechbrain.inference.speaker import EncoderClassifier
             self._classifier = EncoderClassifier.from_hparams(
                 source="speechbrain/spkrec-ecapa-voxceleb",
-                savedir="storage/models/spkrec-ecapa-voxceleb",
                 run_opts={"device": self.device_config.device}
             )
 
