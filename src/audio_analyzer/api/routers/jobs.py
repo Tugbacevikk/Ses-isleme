@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks, Query
 from fastapi.responses import FileResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
@@ -144,6 +144,38 @@ async def upload_and_analyze_audio(
         status="PENDING",
         message="Ses analizi görevi asenkron olarak kuyruğa alındı.",
     )
+
+
+@router.get("/jobs", response_model=List[JobStatusResponse])
+def list_jobs(
+    skip: int = Query(0, ge=0, description="Atlanacak kayıt sayısı"),
+    limit: int = Query(20, ge=1, le=100, description="Getirilecek maksimum kayıt sayısı"),
+    repository: ITranscriptRepository = Depends(get_repository),
+):
+    """
+    Geçmişte yüklenen tüm ses analizi görevlerini tarihe göre tersten sıralı (en yeni en üstte)
+    ve sayfalamalı (Pagination: skip, limit) olarak getirir.
+    """
+    records = repository.list_records(skip=skip, limit=limit)
+    return [
+        JobStatusResponse(
+            job_id=str(r.id),
+            file_name=r.file_name,
+            status=r.status.value,
+            language=r.language,
+            error_message=r.error_message,
+            utterances=[
+                UtteranceResponse(
+                    speaker_id=u.speaker_id,
+                    start_time=u.start_time,
+                    end_time=u.end_time,
+                    text=u.text,
+                )
+                for u in r.utterances
+            ],
+        )
+        for r in records
+    ]
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)

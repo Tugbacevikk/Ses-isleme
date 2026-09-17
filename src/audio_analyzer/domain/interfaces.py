@@ -73,6 +73,11 @@ class ITranscriptRepository(ABC):
         """Ses kaydına yeni bir konuşmacı bloğu ekler."""
         pass
 
+    @abstractmethod
+    def list_records(self, skip: int = 0, limit: int = 20) -> List[AudioRecord]:
+        """Tüm ses kayıtlarını tarihe göre tersten sıralı ve sayfalamalı getirir."""
+        pass
+
 
 class IUnitOfWork(ABC):
     """Unit of Work (İş Birimi) İşlem ve Transaction Yönetimi Arayüzü."""

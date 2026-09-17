@@ -154,6 +154,16 @@ class PostgresRepository(ITranscriptRepository):
         self._commit_or_flush()
         return True
 
+    def list_records(self, skip: int = 0, limit: int = 20) -> List[AudioRecord]:
+        orm_records = (
+            self.session.query(AudioRecordModel)
+            .order_by(AudioRecordModel.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+        return [self._to_domain(r) for r in orm_records]
+
     def _to_domain(self, orm: AudioRecordModel) -> AudioRecord:
         domain_utterances = [
             TranscriptUtterance(

@@ -92,3 +92,14 @@ def test_utterance_crud_flow():
     assert del_res.status_code == 200
     assert del_res.json()["status"] == "SUCCESS"
 
+
+@pytest.mark.unit
+def test_list_jobs_endpoint():
+    """GET /api/v1/jobs sayfalamalı geçmiş işler listeleme endpoint'ini doğrular."""
+    list_res = client.get("/api/v1/jobs?skip=0&limit=10")
+    assert list_res.status_code == 200
+    jobs = list_res.json()
+    assert isinstance(jobs, list)
+    assert len(jobs) >= 1
+
+
