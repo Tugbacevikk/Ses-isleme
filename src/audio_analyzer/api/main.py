@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks, Response
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
@@ -103,12 +103,19 @@ if STATIC_DIR.exists():
 def get_web_ui():
     """
     Sürükle-Bırak Kolay Ses Analiz Web Arayüzü (Statik Frontend Dosyasından Sunulur).
-    http://localhost:8000/ adresinde doğrudan açılır.
     """
     index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
-        raise HTTPException(status_code=404, detail="Statik frontend dosyası (index.html) bulunamadı.")
+        raise HTTPException(status_code=404, detail="Web arayüzü dosyası bulunamadı")
     return FileResponse(index_path)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """
+    Tarayıcıların otomatik favicon isteğine 204 No Content dönerek 404 loglarını engeller.
+    """
+    return Response(status_code=204)
 
 
 def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
