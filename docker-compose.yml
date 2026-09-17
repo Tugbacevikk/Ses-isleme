@@ -1,8 +1,6 @@
 # ==============================================================================
 # SES ANALİZİ PLATFORMU - DOCKER COMPOSE YAPILANDIRMASI
 # ==============================================================================
-version: '3.8'
-
 services:
   # 1. FastAPI Web Sunucusu (REST API + Web UI)
   web:
