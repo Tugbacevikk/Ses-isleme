@@ -272,6 +272,17 @@
             </div>
         </div>
 
+        <!-- Geçmiş Analiz Kayıtları Kartı -->
+        <div class="glass-card" id="historySection">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.2rem; color: #f8fafc; display: flex; align-items: center; gap: 0.5rem;">📜 Geçmiş Analiz Kayıtları</h3>
+                <button style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4); padding: 0.35rem 0.85rem; border-radius: 0.5rem; font-size: 0.8rem; font-weight: 600; cursor: pointer;" onclick="loadHistory()">🔄 Yenile</button>
+            </div>
+            <div id="historyList" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                <p style="color: var(--text-muted); font-size: 0.875rem;">Kayıtlar yükleniyor...</p>
+            </div>
+        </div>
+
         <!-- Analiz Sonuçları Kartı -->
         <div class="glass-card" id="resultsSection">
             <h2 style="margin-bottom: 1.25rem; font-size: 1.5rem;">Analiz Sonuçları</h2>
@@ -482,6 +493,7 @@
             utteranceList.appendChild(addPanel);
 
             resultsSection.style.display = 'block';
+            loadHistory();
         }
 
         async function fetchAndRefresh(jobId) {
@@ -581,6 +593,48 @@
             const secs = (seconds % 60).toFixed(2);
             return `${mins.toString().padStart(2, '0')}:${secs.padStart(5, '0')}s`;
         }
+
+        async function loadHistory() {
+            const historyList = document.getElementById('historyList');
+            if (!historyList) return;
+            try {
+                const res = await fetch('/api/v1/jobs?skip=0&limit=10');
+                if (!res.ok) return;
+                const jobs = await res.json();
+                if (jobs.length === 0) {
+                    historyList.innerHTML = '<p style="color: var(--text-muted); font-size: 0.875rem;">Henüz kaydedilmiş bir ses analizi bulunmuyor.</p>';
+                    return;
+                }
+                historyList.innerHTML = jobs.map(j => `
+                    <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.05); padding: 0.85rem 1.15rem; border-radius: 0.75rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                        <div>
+                            <strong style="color: #f8fafc; font-size: 0.95rem;">🎵 ${j.file_name}</strong>
+                            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">
+                                Durum: <span style="color: ${j.status === 'COMPLETED' ? '#10b981' : (j.status === 'FAILED' ? '#ef4444' : '#f59e0b')}; font-weight: 600;">${j.status}</span> | Dil: ${(j.language || 'tr').toUpperCase()} | Blok: ${j.utterances ? j.utterances.length : 0} Adet
+                            </div>
+                        </div>
+                        <button style="background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-blue) 100%); color: white; border: none; padding: 0.45rem 1rem; border-radius: 0.5rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);" onclick="loadJobDetails('${j.job_id}')">🔍 İncele & Dinle</button>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function loadJobDetails(jobId) {
+            try {
+                const res = await fetch(`/api/v1/jobs/${jobId}`);
+                if (res.ok) {
+                    const job = await res.json();
+                    renderResults(job);
+                    resultsSection.scrollIntoView({ behavior: 'smooth' });
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', loadHistory);
     </script>
 </body>
 </html>
