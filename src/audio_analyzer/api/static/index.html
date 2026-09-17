@@ -278,8 +278,17 @@
 
         <!-- Analiz Sonuçları Kartı -->
         <div class="glass-card" id="resultsSection">
-            <h2 style="margin-bottom: 1rem; font-size: 1.5rem;">Analiz Sonuçları</h2>
+            <h2 style="margin-bottom: 1.25rem; font-size: 1.5rem;">Analiz Sonuçları</h2>
             
+            <!-- Global Ses Oynatıcı -->
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(139, 92, 246, 0.3); padding: 1rem 1.25rem; border-radius: 1rem; margin-bottom: 1.5rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                    <span style="font-weight: 600; font-size: 0.95rem; color: #c4b5fd;">🎧 Ses Oynatıcı (Tam Kayıt)</span>
+                    <span id="audioClipStatus" style="font-size: 0.85rem; color: var(--accent-cyan); font-weight: 500;"></span>
+                </div>
+                <audio id="mainAudioPlayer" controls style="width: 100%; outline: none; border-radius: 0.5rem;"></audio>
+            </div>
+
             <div class="meta-bar">
                 <div class="meta-item">Dosya: <strong id="metaFileName">-</strong></div>
                 <div class="meta-item">Tespit Edilen Dil: <strong id="metaLanguage">-</strong></div>
@@ -383,6 +392,38 @@
 
         let currentJobId = null;
         let currentJobData = null;
+        let currentClipEndTime = null;
+
+        function playClip(startTime, endTime, cardIndex) {
+            const player = document.getElementById('mainAudioPlayer');
+            const statusElem = document.getElementById('audioClipStatus');
+            if (!player) return;
+
+            // Kart görsel vurgulama
+            document.querySelectorAll('.utterance-card').forEach(c => c.style.borderColor = 'rgba(255, 255, 255, 0.05)');
+            const cards = document.querySelectorAll('.utterance-card');
+            if (cards[cardIndex]) {
+                cards[cardIndex].style.borderColor = '#06b6d4';
+                cards[cardIndex].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+
+            player.currentTime = startTime;
+            player.play();
+
+            currentClipEndTime = endTime;
+            if (statusElem) {
+                statusElem.textContent = `▶️ Oynatılıyor: ${formatTime(startTime)} - ${formatTime(endTime)}`;
+            }
+
+            player.ontimeupdate = function() {
+                if (currentClipEndTime !== null && player.currentTime >= currentClipEndTime) {
+                    player.pause();
+                    currentClipEndTime = null;
+                    player.ontimeupdate = null;
+                    if (statusElem) statusElem.textContent = '⏹️ Parça Bitti';
+                }
+            };
+        }
 
         function renderResults(job) {
             currentJobId = job.job_id;
@@ -390,6 +431,11 @@
             document.getElementById('metaFileName').textContent = job.file_name;
             document.getElementById('metaLanguage').textContent = (job.language || 'tr').toUpperCase();
             document.getElementById('metaBlockCount').textContent = job.utterances.length + ' Adet';
+
+            const player = document.getElementById('mainAudioPlayer');
+            if (player) {
+                player.src = `/api/v1/jobs/${job.job_id}/audio`;
+            }
 
             utteranceList.innerHTML = '';
 
@@ -418,9 +464,12 @@
                         <span class="time-badge">[${startStr} - ${endStr}]</span>
                     </div>
                     <div id="text-${index}" class="utterance-text" contenteditable="true" style="outline: 1px dashed rgba(139, 92, 246, 0.5); padding: 0.75rem; border-radius: 0.5rem; background: rgba(15, 23, 42, 0.6); margin-top: 0.5rem; min-height: 40px;" onblur="updateText('${job.job_id}', ${index}, '${u.speaker_id}', this.innerText)">${u.text}</div>
-                    <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
-                        <button style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;" onclick="deleteUtterance('${job.job_id}', ${index})">🗑️ Kutuyu Sil</button>
-                        <button style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;" onclick="saveCardEdits('${job.job_id}', ${index})">💾 Değişikliği Kaydet</button>
+                    <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                        <button style="background: rgba(6, 182, 212, 0.2); color: #67e8f9; border: 1px solid rgba(6, 182, 212, 0.4); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.3rem;" onclick="playClip(${u.start_time}, ${u.end_time}, ${index})">▶️ Bu Kısmı Dinle (${startStr})</button>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;" onclick="deleteUtterance('${job.job_id}', ${index})">🗑️ Kutuyu Sil</button>
+                            <button style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;" onclick="saveCardEdits('${job.job_id}', ${index})">💾 Değişikliği Kaydet</button>
+                        </div>
                     </div>
                 `;
                 utteranceList.appendChild(card);

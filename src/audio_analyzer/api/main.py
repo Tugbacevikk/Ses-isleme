@@ -1,3 +1,4 @@
+import mimetypes
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -343,6 +344,35 @@ def get_job_status(job_id: str, db: Session = Depends(get_db)):
         error_message=record.error_message,
         utterances=utterances,
     )
+
+
+@app.get("/api/v1/jobs/{job_id}/audio")
+def get_job_audio_file(job_id: str, db: Session = Depends(get_db)):
+    """
+    Ses analizi görevine ait ham ses dosyasını tarayıcıda dinlenmek üzere sunar (Streaming / Audio Player).
+    """
+    try:
+        record_uuid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
+
+    repository = PostgresRepository(session=db)
+    record = repository.get_record_by_id(record_uuid)
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Ses analizi görevi bulunamadı.")
+
+    storage = LocalStorageAdapter(base_dir="storage/raw")
+    local_path = storage.get_path(record.storage_uri)
+
+    if not os.path.exists(local_path):
+        raise HTTPException(status_code=404, detail="Ses dosyası diskte bulunamadı.")
+
+    media_type, _ = mimetypes.guess_type(local_path)
+    if not media_type:
+        media_type = "audio/wav"
+
+    return FileResponse(path=local_path, media_type=media_type, filename=record.file_name)
 
 
 def start():
