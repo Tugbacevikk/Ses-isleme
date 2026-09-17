@@ -48,9 +48,3 @@ def process_audio_task(self, record_id_str: str) -> Dict[str, Any]:
         else:
             return {"record_id": record_id_str, "status": "FAILED"}
 
-    except Exception as exc:
-        # Hata durumunda yeniden deneme (retry) veya hata loglama
-        session.rollback()
-        raise exc
-    finally:
-        session.close()
