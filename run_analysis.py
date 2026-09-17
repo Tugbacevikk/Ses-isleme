@@ -82,6 +82,7 @@ def main():
     engine = create_engine(database_url, echo=False, connect_args=connect_args)
     Base.metadata.create_all(bind=engine)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    session = SessionLocal()
     print(f"\n[2/5] VERİTABANI İŞLEMLERİ:")
     print(f"      - Veritabanı URL           : {database_url}")
     print(f"      - Veritabanı Tabloları      : audio_records, transcript_utterances [HAZIR]")
