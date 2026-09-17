@@ -12,8 +12,15 @@ class PostgresRepository(ITranscriptRepository):
     Clean Architecture gereği ORM nesneleri ile Domain modelleri arasında dönüşüm yapar.
     """
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, autocommit: bool = True):
         self.session = session
+        self.autocommit = autocommit
+
+    def _commit_or_flush(self):
+        if self.autocommit:
+            self.session.commit()
+        else:
+            self.session.flush()
 
     def save_record(self, record: AudioRecord) -> AudioRecord:
         orm_model = AudioRecordModel(
@@ -30,8 +37,9 @@ class PostgresRepository(ITranscriptRepository):
             updated_at=record.updated_at,
         )
         self.session.add(orm_model)
-        self.session.commit()
-        self.session.refresh(orm_model)
+        self._commit_or_flush()
+        if self.autocommit:
+            self.session.refresh(orm_model)
         return self._to_domain(orm_model)
 
     def get_record_by_id(self, record_id: uuid.UUID) -> Optional[AudioRecord]:
@@ -59,7 +67,7 @@ class PostgresRepository(ITranscriptRepository):
         if error_message is not None:
             orm_model.error_message = error_message
         
-        self.session.commit()
+        self._commit_or_flush()
         return True
 
     def save_utterances(
@@ -90,7 +98,7 @@ class PostgresRepository(ITranscriptRepository):
         if language:
             orm_model.language = language
 
-        self.session.commit()
+        self._commit_or_flush()
         return True
 
     def update_utterance(
@@ -107,7 +115,7 @@ class PostgresRepository(ITranscriptRepository):
 
         orm_utterances[utterance_index].speaker_id = speaker_id
         orm_utterances[utterance_index].text = text
-        self.session.commit()
+        self._commit_or_flush()
         return True
 
     def delete_utterance(self, record_id: uuid.UUID, utterance_index: int) -> bool:
@@ -121,7 +129,7 @@ class PostgresRepository(ITranscriptRepository):
             return False
 
         self.session.delete(orm_utterances[utterance_index])
-        self.session.commit()
+        self._commit_or_flush()
         return True
 
     def add_utterance(self, record_id: uuid.UUID, utterance: TranscriptUtterance) -> bool:
@@ -143,7 +151,7 @@ class PostgresRepository(ITranscriptRepository):
             created_at=utterance.created_at,
         )
         self.session.add(new_u)
-        self.session.commit()
+        self._commit_or_flush()
         return True
 
     def _to_domain(self, orm: AudioRecordModel) -> AudioRecord:

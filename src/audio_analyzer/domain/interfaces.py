@@ -74,6 +74,30 @@ class ITranscriptRepository(ABC):
         pass
 
 
+class IUnitOfWork(ABC):
+    """Unit of Work (İş Birimi) İşlem ve Transaction Yönetimi Arayüzü."""
+
+    repository: ITranscriptRepository
+
+    @abstractmethod
+    def __enter__(self):
+        pass
+
+    @abstractmethod
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    @abstractmethod
+    def commit(self):
+        """Transaction değişikliklerini veritabanına kaydeder."""
+        pass
+
+    @abstractmethod
+    def rollback(self):
+        """Hata durumunda transaction değişikliklerini geri alır."""
+        pass
+
+
 class ISTTEngine(ABC):
     """Speech-to-Text Motor Arayüzü (Whisper vb.)."""
 
