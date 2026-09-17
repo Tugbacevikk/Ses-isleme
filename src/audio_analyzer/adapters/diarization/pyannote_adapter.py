@@ -52,10 +52,22 @@ class PyAnnoteAdapter(IDiarizer):
     def diarize(self, audio_path: str) -> List[DiarizationSegment]:
         try:
             self._lazy_load_pipeline()
-            diarization = self._pipeline(audio_path)
+            import torch
+            import soundfile as sf
+
+            # Soundfile ile sesi yukleyip PyAnnote'a waveform dict olarak vererek
+            # Windows uzerindeki torchcodec / FFmpeg DLL yukleme hatalarini tamamen bypass ediyoruz.
+            data, sr = sf.read(audio_path)
+            if data.ndim > 1:
+                data = data.mean(axis=1)
+            waveform = torch.tensor(data, dtype=torch.float32).unsqueeze(0)
+            audio_input = {"waveform": waveform, "sample_rate": sr}
+
+            diarization = self._pipeline(audio_input)
+            annotation = getattr(diarization, "speaker_diarization", diarization)
             segments: List[DiarizationSegment] = []
 
-            for turn, _, speaker in diarization.itertracks(yield_label=True):
+            for turn, _, speaker in annotation.itertracks(yield_label=True):
                 segments.append(
                     DiarizationSegment(
                         speaker_id=str(speaker),
