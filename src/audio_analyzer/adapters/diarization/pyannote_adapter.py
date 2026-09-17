@@ -28,6 +28,8 @@ class PyAnnoteAdapter(IDiarizer):
         if self._pipeline is None:
             try:
                 import torch
+                import warnings
+                warnings.filterwarnings("ignore", category=UserWarning, module="pyannote")
                 from pyannote.audio import Pipeline
                 try:
                     self._pipeline = Pipeline.from_pretrained(
