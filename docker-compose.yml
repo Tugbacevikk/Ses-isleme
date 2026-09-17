@@ -1,0 +1,80 @@
+# ==============================================================================
+# SES ANALİZİ PLATFORMU - DOCKER COMPOSE YAPILANDIRMASI
+# ==============================================================================
+version: '3.8'
+
+services:
+  # 1. FastAPI Web Sunucusu (REST API + Web UI)
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: audio_analyzer_web
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/audio_db
+      - REDIS_URL=redis://redis:6379/0
+      - USE_CELERY=true
+      - WHISPER_MODEL_SIZE=small
+      - ALLOW_MOCK_STT=false
+    volumes:
+      - audio_storage:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # 2. Celery Asenkron Worker (Ağır Yapay Zeka İşleri)
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: audio_analyzer_worker
+    restart: always
+    command: celery -A audio_analyzer.workers.celery_app worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/audio_db
+      - REDIS_URL=redis://redis:6379/0
+      - WHISPER_MODEL_SIZE=small
+      - ALLOW_MOCK_STT=false
+    volumes:
+      - audio_storage:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # 3. PostgreSQL Veritabanı
+  db:
+    image: postgres:16-alpine
+    container_name: audio_analyzer_db
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=audio_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d audio_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 4. Redis Mesaj Brokerı & Önbellek
+  redis:
+    image: redis:7-alpine
+    container_name: audio_analyzer_redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
+  audio_storage:
