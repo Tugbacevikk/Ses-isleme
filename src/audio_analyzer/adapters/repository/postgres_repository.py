@@ -93,6 +93,59 @@ class PostgresRepository(ITranscriptRepository):
         self.session.commit()
         return True
 
+    def update_utterance(
+        self, record_id: uuid.UUID, utterance_index: int, speaker_id: str, text: str
+    ) -> bool:
+        orm_utterances = (
+            self.session.query(TranscriptUtteranceModel)
+            .filter(TranscriptUtteranceModel.audio_record_id == record_id)
+            .order_by(TranscriptUtteranceModel.start_time.asc())
+            .all()
+        )
+        if not orm_utterances or utterance_index < 0 or utterance_index >= len(orm_utterances):
+            return False
+
+        orm_utterances[utterance_index].speaker_id = speaker_id
+        orm_utterances[utterance_index].text = text
+        self.session.commit()
+        return True
+
+    def delete_utterance(self, record_id: uuid.UUID, utterance_index: int) -> bool:
+        orm_utterances = (
+            self.session.query(TranscriptUtteranceModel)
+            .filter(TranscriptUtteranceModel.audio_record_id == record_id)
+            .order_by(TranscriptUtteranceModel.start_time.asc())
+            .all()
+        )
+        if not orm_utterances or utterance_index < 0 or utterance_index >= len(orm_utterances):
+            return False
+
+        self.session.delete(orm_utterances[utterance_index])
+        self.session.commit()
+        return True
+
+    def add_utterance(self, record_id: uuid.UUID, utterance: TranscriptUtterance) -> bool:
+        record = (
+            self.session.query(AudioRecordModel)
+            .filter(AudioRecordModel.id == record_id)
+            .first()
+        )
+        if not record:
+            return False
+
+        new_u = TranscriptUtteranceModel(
+            id=utterance.id or uuid.uuid4(),
+            audio_record_id=record_id,
+            speaker_id=utterance.speaker_id,
+            start_time=utterance.start_time,
+            end_time=utterance.end_time,
+            text=utterance.text,
+            created_at=utterance.created_at,
+        )
+        self.session.add(new_u)
+        self.session.commit()
+        return True
+
     def _to_domain(self, orm: AudioRecordModel) -> AudioRecord:
         domain_utterances = [
             TranscriptUtterance(

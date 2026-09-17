@@ -243,20 +243,15 @@ def update_utterance_speaker(
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    from audio_analyzer.adapters.repository.models import TranscriptUtteranceModel
-    orm_utterances = (
-        db.query(TranscriptUtteranceModel)
-        .filter(TranscriptUtteranceModel.audio_record_id == record_uuid)
-        .order_by(TranscriptUtteranceModel.start_time.asc())
-        .all()
+    repository = PostgresRepository(session=db)
+    success = repository.update_utterance(
+        record_id=record_uuid,
+        utterance_index=utterance_index,
+        speaker_id=req.speaker_id,
+        text=req.text,
     )
-
-    if not orm_utterances or utterance_index < 0 or utterance_index >= len(orm_utterances):
+    if not success:
         raise HTTPException(status_code=404, detail="Güncellenecek cümle bulunamadı.")
-
-    orm_utterances[utterance_index].speaker_id = req.speaker_id
-    orm_utterances[utterance_index].text = req.text
-    db.commit()
 
     return {"status": "SUCCESS", "message": "Konuşmacı etiketi başarıyla güncellendi."}
 
@@ -276,19 +271,10 @@ def delete_utterance(
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    from audio_analyzer.adapters.repository.models import TranscriptUtteranceModel
-    orm_utterances = (
-        db.query(TranscriptUtteranceModel)
-        .filter(TranscriptUtteranceModel.audio_record_id == record_uuid)
-        .order_by(TranscriptUtteranceModel.start_time.asc())
-        .all()
-    )
-
-    if not orm_utterances or utterance_index < 0 or utterance_index >= len(orm_utterances):
+    repository = PostgresRepository(session=db)
+    success = repository.delete_utterance(record_id=record_uuid, utterance_index=utterance_index)
+    if not success:
         raise HTTPException(status_code=404, detail="Silinecek cümle bulunamadı.")
-
-    db.delete(orm_utterances[utterance_index])
-    db.commit()
 
     return {"status": "SUCCESS", "message": "Konuşmacı bloğu başarıyla silindi."}
 
@@ -315,21 +301,18 @@ def create_utterance(
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    from audio_analyzer.adapters.repository.models import TranscriptUtteranceModel, AudioRecordModel
-    record = db.query(AudioRecordModel).filter(AudioRecordModel.id == record_uuid).first()
-    if not record:
-        raise HTTPException(status_code=404, detail="Ses görevi bulunamadı.")
-
-    new_u = TranscriptUtteranceModel(
+    from audio_analyzer.domain.models import TranscriptUtterance
+    new_u = TranscriptUtterance(
         id=uuid.uuid4(),
-        audio_record_id=record_uuid,
         speaker_id=req.speaker_id,
         start_time=req.start_time,
         end_time=req.end_time,
         text=req.text,
     )
-    db.add(new_u)
-    db.commit()
+    repository = PostgresRepository(session=db)
+    success = repository.add_utterance(record_id=record_uuid, utterance=new_u)
+    if not success:
+        raise HTTPException(status_code=404, detail="Ses görevi bulunamadı.")
 
     return {"status": "SUCCESS", "message": "Yeni konuşmacı bloğu başarıyla eklendi."}
 

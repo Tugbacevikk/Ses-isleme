@@ -56,6 +56,23 @@ class ITranscriptRepository(ABC):
         """Analiz sonucu oluşan konuşmacı metinlerini kaydedip durumu COMPLETED yapar."""
         pass
 
+    @abstractmethod
+    def update_utterance(
+        self, record_id: uuid.UUID, utterance_index: int, speaker_id: str, text: str
+    ) -> bool:
+        """Belirtilen indeksteki konuşmacı ve metin bilgisini günceller."""
+        pass
+
+    @abstractmethod
+    def delete_utterance(self, record_id: uuid.UUID, utterance_index: int) -> bool:
+        """Belirtilen indeksteki konuşmacı bloğunu siler."""
+        pass
+
+    @abstractmethod
+    def add_utterance(self, record_id: uuid.UUID, utterance: TranscriptUtterance) -> bool:
+        """Ses kaydına yeni bir konuşmacı bloğu ekler."""
+        pass
+
 
 class ISTTEngine(ABC):
     """Speech-to-Text Motor Arayüzü (Whisper vb.)."""

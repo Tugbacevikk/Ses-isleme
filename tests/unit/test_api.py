@@ -53,3 +53,42 @@ def test_api_upload_and_status_flow(tmp_path):
     get_data = get_res.json()
     assert get_data["job_id"] == job_id
     assert get_data["status"] == "COMPLETED"
+
+
+@pytest.mark.unit
+def test_utterance_crud_flow():
+    """ITranscriptRepository üzerinden PUT, DELETE, POST utterance endpoint akışlarını doğrular."""
+    valid_wav = make_valid_wav_bytes()
+    files = {"file": ("test_crud.wav", valid_wav, "audio/wav")}
+    post_res = client.post("/api/v1/analyze", files=files)
+    job_id = post_res.json()["job_id"]
+
+    # 1. POST /api/v1/jobs/{job_id}/utterances (Kutu Ekle)
+    add_res = client.post(
+        f"/api/v1/jobs/{job_id}/utterances",
+        json={
+            "speaker_id": "SPEAKER_00",
+            "start_time": 0.0,
+            "end_time": 1.0,
+            "text": "Merhaba dunya"
+        }
+    )
+    assert add_res.status_code == 200
+    assert add_res.json()["status"] == "SUCCESS"
+
+    # 2. PUT /api/v1/jobs/{job_id}/utterances/0 (Kutu Guncelle)
+    update_res = client.put(
+        f"/api/v1/jobs/{job_id}/utterances/0",
+        json={
+            "speaker_id": "SPEAKER_01",
+            "text": "Guncellenmis metin"
+        }
+    )
+    assert update_res.status_code == 200
+    assert update_res.json()["status"] == "SUCCESS"
+
+    # 3. DELETE /api/v1/jobs/{job_id}/utterances/0 (Kutu Sil)
+    del_res = client.delete(f"/api/v1/jobs/{job_id}/utterances/0")
+    assert del_res.status_code == 200
+    assert del_res.json()["status"] == "SUCCESS"
+
