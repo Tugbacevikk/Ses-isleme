@@ -317,6 +317,16 @@
     </div>
 
     <script>
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const statusContainer = document.getElementById('statusContainer');
@@ -464,12 +474,16 @@
                 const startStr = formatTime(u.start_time);
                 const endStr = formatTime(u.end_time);
 
+                const safeSpeakerId = escapeHtml(u.speaker_id);
+                const safeText = escapeHtml(u.text);
+                const safeJobId = escapeHtml(job.job_id);
+
                 card.innerHTML = `
                     <div class="speaker-header">
                         <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-                            <span class="speaker-badge ${badgeClass}">${u.speaker_id}</span>
+                            <span class="speaker-badge ${badgeClass}">${safeSpeakerId}</span>
                             <label style="font-size: 0.8rem; color: #94a3b8; font-weight: 500;">Konuşmacı Ataması:</label>
-                            <select class="speaker-select" style="background: #0f172a; color: #38bdf8; border: 1px solid #38bdf8; padding: 0.35rem 0.75rem; border-radius: 0.5rem; font-weight: 600; cursor: pointer; font-size: 0.85rem;" onchange="updateSpeaker('${job.job_id}', ${index}, this.value)">
+                            <select class="speaker-select" style="background: #0f172a; color: #38bdf8; border: 1px solid #38bdf8; padding: 0.35rem 0.75rem; border-radius: 0.5rem; font-weight: 600; cursor: pointer; font-size: 0.85rem;" onchange="updateSpeaker('${safeJobId}', ${index}, this.value)">
                                 <option value="SPEAKER_00" ${u.speaker_id === 'SPEAKER_00' ? 'selected' : ''}>Konuşmacı 1 (SPEAKER_00)</option>
                                 <option value="SPEAKER_01" ${u.speaker_id === 'SPEAKER_01' ? 'selected' : ''}>Konuşmacı 2 (SPEAKER_01)</option>
                                 <option value="SPEAKER_02" ${u.speaker_id === 'SPEAKER_02' ? 'selected' : ''}>Konuşmacı 3 (SPEAKER_02)</option>
@@ -478,12 +492,12 @@
                         </div>
                         <span class="time-badge">[${startStr} - ${endStr}]</span>
                     </div>
-                    <div id="text-${index}" class="utterance-text" contenteditable="true" style="outline: 1px dashed rgba(139, 92, 246, 0.5); padding: 0.75rem; border-radius: 0.5rem; background: rgba(15, 23, 42, 0.6); margin-top: 0.5rem; min-height: 40px;" onblur="updateText('${job.job_id}', ${index}, '${u.speaker_id}', this.innerText)">${u.text}</div>
+                    <div id="text-${index}" class="utterance-text" contenteditable="true" style="outline: 1px dashed rgba(139, 92, 246, 0.5); padding: 0.75rem; border-radius: 0.5rem; background: rgba(15, 23, 42, 0.6); margin-top: 0.5rem; min-height: 40px;" data-speaker="${safeSpeakerId}" onblur="updateText('${safeJobId}', ${index}, this.dataset.speaker, this.innerText)">${safeText}</div>
                     <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; justify-content: space-between; align-items: center; flex-wrap: wrap;">
                         <button style="background: rgba(6, 182, 212, 0.2); color: #67e8f9; border: 1px solid rgba(6, 182, 212, 0.4); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.3rem;" onclick="playClip(${u.start_time}, ${u.end_time}, ${index})">▶️ Bu Kısmı Dinle (${startStr})</button>
                         <div style="display: flex; gap: 0.5rem;">
-                            <button style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;" onclick="deleteUtterance('${job.job_id}', ${index})">🗑️ Kutuyu Sil</button>
-                            <button style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;" onclick="saveCardEdits('${job.job_id}', ${index})">💾 Değişikliği Kaydet</button>
+                            <button style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;" onclick="deleteUtterance('${safeJobId}', ${index})">🗑️ Kutuyu Sil</button>
+                            <button style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;" onclick="saveCardEdits('${safeJobId}', ${index})">💾 Değişikliği Kaydet</button>
                         </div>
                     </div>
                 `;
@@ -496,7 +510,7 @@
             addPanel.style.display = 'flex';
             addPanel.style.justify = 'center';
             addPanel.innerHTML = `
-                <button style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 0.6rem 1.5rem; border-radius: 0.5rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);" onclick="addNewUtterance('${job.job_id}')">➕ Yeni Konuşmacı Bloğu Ekle</button>
+                <button style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 0.6rem 1.5rem; border-radius: 0.5rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);" onclick="addNewUtterance('${escapeHtml(job.job_id)}')">➕ Yeni Konuşmacı Bloğu Ekle</button>
             `;
             utteranceList.appendChild(addPanel);
 
@@ -613,20 +627,28 @@
                     historyList.innerHTML = '<p style="color: var(--text-muted); font-size: 0.875rem;">Henüz kaydedilmiş bir ses analizi bulunmuyor.</p>';
                     return;
                 }
-                historyList.innerHTML = jobs.map(j => `
-                    <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.05); padding: 0.85rem 1.15rem; border-radius: 0.75rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-                        <div>
-                            <strong style="color: #f8fafc; font-size: 0.95rem;">🎵 ${j.file_name}</strong>
-                            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">
-                                Durum: <span style="color: ${j.status === 'COMPLETED' ? '#10b981' : (j.status === 'FAILED' ? '#ef4444' : '#f59e0b')}; font-weight: 600;">${j.status}</span> | Dil: ${(j.language || 'tr').toUpperCase()} | Blok: ${j.utterances ? j.utterances.length : 0} Adet
+                historyList.innerHTML = jobs.map(j => {
+                    const safeFileName = escapeHtml(j.file_name);
+                    const safeJobId = escapeHtml(j.job_id);
+                    const safeStatus = escapeHtml(j.status);
+                    const safeLanguage = escapeHtml((j.language || 'tr').toUpperCase());
+                    const count = j.utterances ? j.utterances.length : 0;
+                    const statusColor = j.status === 'COMPLETED' ? '#10b981' : (j.status === 'FAILED' ? '#ef4444' : '#f59e0b');
+                    return `
+                        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.05); padding: 0.85rem 1.15rem; border-radius: 0.75rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                            <div>
+                                <strong style="color: #f8fafc; font-size: 0.95rem;">🎵 ${safeFileName}</strong>
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">
+                                    Durum: <span style="color: ${statusColor}; font-weight: 600;">${safeStatus}</span> | Dil: ${safeLanguage} | Blok: ${count} Adet
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button style="background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-blue) 100%); color: white; border: none; padding: 0.45rem 1rem; border-radius: 0.5rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);" onclick="loadJobDetails('${safeJobId}')">🔍 İncele & Dinle</button>
+                                <button style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); padding: 0.45rem 0.85rem; border-radius: 0.5rem; font-size: 0.8rem; font-weight: 600; cursor: pointer;" onclick="deleteJob('${safeJobId}')">🗑️ Sil</button>
                             </div>
                         </div>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <button style="background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-blue) 100%); color: white; border: none; padding: 0.45rem 1rem; border-radius: 0.5rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);" onclick="loadJobDetails('${j.job_id}')">🔍 İncele & Dinle</button>
-                            <button style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); padding: 0.45rem 0.85rem; border-radius: 0.5rem; font-size: 0.8rem; font-weight: 600; cursor: pointer;" onclick="deleteJob('${j.job_id}')">🗑️ Sil</button>
-                        </div>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
             } catch (err) {
                 console.error(err);
             }
