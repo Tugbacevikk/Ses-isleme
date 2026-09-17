@@ -35,41 +35,51 @@ class AudioAnalysisPipeline:
         Returns: (List[TranscriptUtterance], detected_language)
         """
         working_path = audio_path
+        created_temp_file: Optional[str] = None
 
-        # 1. Ses Ön İşleme & Normalizasyon (MP3 -> 16kHz Mono WAV Dönüşümü)
-        if self.audio_processor:
-            processed_wav_path = str(Path(audio_path).with_suffix(".processed.wav"))
-            working_path = self.audio_processor.normalize_and_resample(
-                input_path=audio_path,
-                output_path=processed_wav_path,
-                target_sample_rate=16000,
-            )
+        try:
+            # 1. Ses Ön İşleme & Normalizasyon (MP3 -> 16kHz Mono WAV Dönüşümü)
+            if self.audio_processor:
+                processed_wav_path = str(Path(audio_path).with_suffix(".processed.wav"))
+                working_path = self.audio_processor.normalize_and_resample(
+                    input_path=audio_path,
+                    output_path=processed_wav_path,
+                    target_sample_rate=16000,
+                )
+                if working_path != audio_path:
+                    created_temp_file = working_path
 
-        # 2. VAD ile konuşma ve sessizlik aralıklarını çıkarma
-        speech_timestamps: Optional[List[Tuple[float, float]]] = None
-        if self.vad_processor:
-            try:
-                speech_timestamps = self.vad_processor.get_speech_timestamps(working_path)
-            except Exception as e:
-                print(f"[UYARI] VAD İşleme Hatası: {e}. VAD filtresi atlanıyor.")
+            # 2. VAD ile konuşma ve sessizlik aralıklarını çıkarma
+            speech_timestamps: Optional[List[Tuple[float, float]]] = None
+            if self.vad_processor:
+                try:
+                    speech_timestamps = self.vad_processor.get_speech_timestamps(working_path)
+                except Exception as e:
+                    print(f"[UYARI] VAD İşleme Hatası: {e}. VAD filtresi atlanıyor.")
 
-        # 3. STT ile kelime seviyesi metin çıkarma ve dil tespiti
-        words, detected_language = self.stt_engine.transcribe(working_path)
+            # 3. STT ile kelime seviyesi metin çıkarma ve dil tespiti
+            words, detected_language = self.stt_engine.transcribe(working_path)
 
-        # 3b. VAD Filtrelemesi: Sessizlik alanlarında türetilen STT halüsinasyonlarını temizle
-        if speech_timestamps and words:
-            words = self._filter_words_with_vad(words, speech_timestamps)
+            # 3b. VAD Filtrelemesi: Sessizlik alanlarında türetilen STT halüsinasyonlarını temizle
+            if speech_timestamps and words:
+                words = self._filter_words_with_vad(words, speech_timestamps)
 
-        # 4. Derin konuşmacı zaman aralıkları çıkarma
-        diarization_segments = self.diarizer.diarize(working_path)
+            # 4. Derin konuşmacı zaman aralıkları çıkarma
+            diarization_segments = self.diarizer.diarize(working_path)
 
-        # 5. FusionEngine ile hizalama
-        raw_utterances = self.fusion_engine.align(words, diarization_segments)
+            # 5. FusionEngine ile hizalama
+            raw_utterances = self.fusion_engine.align(words, diarization_segments)
 
-        # 6. SemanticRefiner ile anlamsal rol hizalaması
-        final_utterances = self.semantic_refiner.refine(raw_utterances)
+            # 6. SemanticRefiner ile anlamsal rol hizalaması
+            final_utterances = self.semantic_refiner.refine(raw_utterances)
 
-        return final_utterances, detected_language
+            return final_utterances, detected_language
+        finally:
+            if created_temp_file and Path(created_temp_file).exists():
+                try:
+                    Path(created_temp_file).unlink()
+                except Exception as cleanup_err:
+                    print(f"[UYARI] Geçici ses dosyası temizleme uyarısı: {cleanup_err}")
 
     def _filter_words_with_vad(
         self, words: List, speech_timestamps: List[Tuple[float, float]], tolerance: float = 0.3

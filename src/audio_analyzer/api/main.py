@@ -1,14 +1,13 @@
-import uuid
 import os
+import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 
-# .env dosyasındaki ortam değişkenlerini yükle (Örn: HF_TOKEN)
-load_dotenv()
-
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -18,12 +17,13 @@ from sqlalchemy.orm import sessionmaker, Session
 from audio_analyzer.adapters.repository.models import Base
 from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
 from audio_analyzer.adapters.storage.local_storage_adapter import LocalStorageAdapter
-from audio_analyzer.services.pipeline import AudioAnalysisPipeline
+from audio_analyzer.domain.models import DeviceConfig, JobStatus, TranscriptUtterance
 from audio_analyzer.services.fusion_engine import FusionEngine
 from audio_analyzer.services.job_service import JobService
-from audio_analyzer.domain.models import DeviceConfig, JobStatus
+from audio_analyzer.services.pipeline import AudioAnalysisPipeline
 
-from contextlib import asynccontextmanager
+# .env dosyasındaki ortam değişkenlerini yükle (Örn: HF_TOKEN)
+load_dotenv()
 
 # SQLite/PostgreSQL DB Bağlantısı (Ortam değişkeninden oku)
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///storage/dev_database.db")
@@ -93,9 +93,6 @@ class JobStatusResponse(BaseModel):
     utterances: List[UtteranceResponse] = []
 
 
-from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
-
 STATIC_DIR = Path(__file__).parent / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -112,8 +109,6 @@ def get_web_ui():
         raise HTTPException(status_code=404, detail="Statik frontend dosyası (index.html) bulunamadı.")
     return FileResponse(index_path)
 
-
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
 
 def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
     """
@@ -136,9 +131,6 @@ def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
     finally:
         db.close()
 
-
-from fastapi.security import APIKeyHeader
-from typing import Optional
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
