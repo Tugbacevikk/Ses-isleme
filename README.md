@@ -84,3 +84,26 @@ maturin develop --manifest-path native/Cargo.toml
 
 *Not: Rust derlenmediğinde sistem otomatik olarak NumPy tabanlı Python fallback modülünü çalıştırır.*
 
+---
+
+## Veritabanı ve Alembic Migrasyon Stratejisi
+
+Sistem, **Dialect-Agnostic SQLAlchemy ORM** ve **Alembic** entegrasyonu ile veritabanı şemalarını esnek şekilde yönetir:
+
+- **Geliştirme / Yerel Ortam (Development & Test)**:
+  `api/main.py` (FastAPI lifespan) ve `run_analysis.py` (CLI runner) yerel hızlı geliştirme için `Base.metadata.create_all(bind=engine)` yöntemini kullanır. Veritabanı dosyası (`dev_database.db`) yoksa otomatik oluşturulur.
+- **Canlı / Staging Ortamı (Production / Staging Schema Management)**:
+  Canlı ortamlarda veritabanı şemalarını versiyonlamak ve veri kaybı olmadan güncellemek için `alembic` kullanılır:
+
+  ```bash
+  # Canlı veritabanını en son migrasyon seviyesine yükseltme
+  alembic upgrade head
+
+  # Mevcut canlı veritabanı migrasyon durumunu kontrol etme
+  alembic current
+
+  # Modellerde yeni bir alan tanımlandığında otomatik migrasyon dosyası üretme
+  alembic revision --autogenerate -m "Şema güncelleme açıklaması"
+  ```
+
+
