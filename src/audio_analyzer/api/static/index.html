@@ -478,16 +478,26 @@
                 const safeText = escapeHtml(u.text);
                 const safeJobId = escapeHtml(job.job_id);
 
+                let optionsHtml = '';
+                const currentSpkNum = u.speaker_id.startsWith('SPEAKER_') ? (parseInt(u.speaker_id.replace('SPEAKER_', ''), 10) || 0) : 0;
+                const totalOptions = Math.max(10, currentSpkNum + 1);
+                for (let i = 0; i < totalOptions; i++) {
+                    const spkVal = `SPEAKER_${i.toString().padStart(2, '0')}`;
+                    const spkLabel = `Konuşmacı ${i + 1} (${spkVal})`;
+                    const isSelected = u.speaker_id === spkVal ? 'selected' : '';
+                    optionsHtml += `<option value="${spkVal}" ${isSelected}>${spkLabel}</option>`;
+                }
+                if (!u.speaker_id.startsWith('SPEAKER_')) {
+                    optionsHtml += `<option value="${safeSpeakerId}" selected>${safeSpeakerId}</option>`;
+                }
+
                 card.innerHTML = `
                     <div class="speaker-header">
                         <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                             <span class="speaker-badge ${badgeClass}">${safeSpeakerId}</span>
                             <label style="font-size: 0.8rem; color: #94a3b8; font-weight: 500;">Konuşmacı Ataması:</label>
                             <select class="speaker-select" style="background: #0f172a; color: #38bdf8; border: 1px solid #38bdf8; padding: 0.35rem 0.75rem; border-radius: 0.5rem; font-weight: 600; cursor: pointer; font-size: 0.85rem;" onchange="updateSpeaker('${safeJobId}', ${index}, this.value)">
-                                <option value="SPEAKER_00" ${u.speaker_id === 'SPEAKER_00' ? 'selected' : ''}>Konuşmacı 1 (SPEAKER_00)</option>
-                                <option value="SPEAKER_01" ${u.speaker_id === 'SPEAKER_01' ? 'selected' : ''}>Konuşmacı 2 (SPEAKER_01)</option>
-                                <option value="SPEAKER_02" ${u.speaker_id === 'SPEAKER_02' ? 'selected' : ''}>Konuşmacı 3 (SPEAKER_02)</option>
-                                <option value="SPEAKER_03" ${u.speaker_id === 'SPEAKER_03' ? 'selected' : ''}>Konuşmacı 4 (SPEAKER_03)</option>
+                                ${optionsHtml}
                             </select>
                         </div>
                         <span class="time-badge">[${startStr} - ${endStr}]</span>

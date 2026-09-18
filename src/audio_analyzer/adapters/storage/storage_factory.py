@@ -1,7 +1,8 @@
 import os
-from audio_analyzer.domain.interfaces import IAudioStorage
+
 from audio_analyzer.adapters.storage.local_storage_adapter import LocalStorageAdapter
 from audio_analyzer.adapters.storage.s3_storage_adapter import S3StorageAdapter
+from audio_analyzer.domain.interfaces import IAudioStorage
 
 
 def get_storage_adapter() -> IAudioStorage:
