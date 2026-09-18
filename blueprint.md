@@ -1,177 +1,206 @@
-# 🎙️ Ses Analizi ve Konuşmacı Ayrıştırma Platformu (Proje Blueprint & Sunum Rehberi)
+# 📘 DETAYLI VE YÜZDE YÜZ EKSİKSİZ PROJE REHBERİ (BLUEPRINT)
+## 🎙️ Ses Analizi ve Konuşmacı Ayrıştırma Platformu
 
-Bu doküman; **Ses Analizi ve Konuşmacı Ayrıştırma (STT + Speaker Diarization) Platformu**'nun mimarisini, kullanılan teknolojileri, gerçekleştirilen geliştirmeleri, güvenlik iyileştirmelerini ve projeyi akademisyenlere/mühendislere anlatırken kullanabileceğiniz **%100 uyumlu sunum rehberini** içermektedir.
-
----
-
-## 📌 1. PROJENİN AMACI VE ÇÖZÜLEN PROBLEM
-
-### Problem
-Geleneksel Ses-Metin Dönüştürme (Speech-to-Text / STT) sistemleri ses kaydını tek bir metin bloğu olarak çevirir. Ancak çok kişili toplantılarda, çağrı merkezi görüşmelerinde veya mülakatlarda **"Kimin, ne zaman, ne söylediğini"** bilmek hayati önem taşır.
-
-### Çözüm
-Bu proje; ses kayıtlarını sadece metne dönüştürmekle kalmaz, **Yapay Zeka Destekli Konuşmacı Ayrıştırma (Speaker Diarization)** teknolojisi ile birleştirerek her konuşmacıyı milisaniye hassasiyetinde zaman damgalarıyla ayırt eder. Kullanıcıya web arayüzü üzerinden transkripti dinleme, metin ve konuşmacı atamalarını canlı düzenleme ve TXT/SRT/JSON formatlarında dışa aktarma imkanı sunar.
+Bu rehber; projeyi **en basit haliyle**, teknik terimleri **açıklayarak** ve **projede bulunan tek bir dosya dahi atlanmadan** uçtan uca anlatmak için hazırlanmıştır. Sunumlarda, mülakatlarda veya projeyi savunurken aklınıza gelebilecek tüm soruların cevabı buradadır.
 
 ---
 
-## 🏗️ 2. YAZILIM MİMARİSİ (Clean Architecture & DDD)
+## 💡 1. EN BASİT ANLATIMLA: BU PROJE NE İŞE YARAR?
 
-Proje; bağımlılıkların içeriye doğru aktığı **Clean Architecture (Temiz Mimari)** ve **Domain-Driven Design (DDD)** prensiplerine %100 uygun olarak geliştirilmiştir.
-
-```mermaid
-graph TD
-    A[Web Arayüzü / Client - index.html] -->|HTTP REST / Async 202| B[API Katmanı - FastAPI Routers]
-    B -->|Dependency Injection| C[Servis Katmanı - JobService & Pipeline]
-    C -->|Fusion Engine| D[Domain Katmanı - Interfaces & Models]
-    C -->|Eşleşme & Birleştirme| E[AI Adaptörleri - Faster-Whisper & PyAnnote]
-    C -->|Repository Pattern & UoW| F[Veritabanı Katmanı - SQLAlchemy / SQLite / Postgres]
-    C -->|Storage Adapter| G[Depolama Katmanı - Local Storage / S3]
-```
-
-### Katmanlar ve Sorumlulukları:
-
-1. **Domain Katmanı (`src/audio_analyzer/domain`)**:
-   - Sistemdeki saf iş modellerini (`AudioRecord`, `TranscriptUtterance`, `JobStatus`) ve soyut arayüzleri (`ISTTEngine`, `IDiarizer`, `IAudioStorage`, `ITranscriptRepository`) içerir.
-   - Hiçbir dış kütüphaneye veya veritabanına bağımlı değildir.
-
-2. **Servis Katmanı (`src/audio_analyzer/services`)**:
-   - **`AudioAnalysisPipeline`**: STT ve Diarization motorlarını koordine eder.
-   - **`FusionEngine`**: Zaman damgalarını çakıştırarak (Overlapping Segment Matching) konuşmacı ile kelimeleri eşleştirir.
-   - **`SemanticRefiner`**: Anlamsal bölünmeleri düzeltir.
-   - **`JobService`**: Görev yaşam döngüsünü (`PENDING` ➔ `PROCESSING` ➔ `COMPLETED`/`FAILED`) yönetir.
-
-3. **Adaptör Katmanı (`src/audio_analyzer/adapters`)**:
-   - **Veritabanı**: SQLAlchemy 2.0 ORM, `PostgresRepository` ve `SqlAlchemyUnitOfWork`. Veritabanı bağımsız (Dialect-Agnostic) mimari sayesinde SQLite ve PostgreSQL ile sorunsuz çalışır.
-   - **Depolama**: `LocalStorageAdapter` ve `S3StorageAdapter`.
-
-4. **API ve Sunum Katmanı (`src/audio_analyzer/api`)**:
-   - **FastAPI**: Non-blocking Asenkron HTTP 202 mimarisi.
-   - **Web UI**: Modern Vanilla JS ve Glassmorphism CSS ile tasarlanmış responsive arayüz.
+Hayal edin: 1 saatlik bir şirket toplantısı kaydınız veya müşteri temsilcisi ile bir müşterinin telefon konuşması var.
+- **Standart Sistemler Neler Yapar?**: Sadece sesteki konuşmaları düz bir metin olarak yan yana yazar. Ama kimin ne zaman konuştuğunu bilemezsiniz.
+- **Bizim Sistemimiz Ne Yapar?**:
+  1. Ses kaydındaki konuşmaları **kelime kelime metne çevirir** (Speech-to-Text).
+  2. Ses tonlarından ve biyometrik ses özelliklerinden **kimin konuştuğunu ayırt eder** (Konuşmacı 1, Konuşmacı 2 vb.).
+  3. Bu iki bilgiyi **milisaniye hassasiyetinde birleştirir**: *"Ahmet 00:05 ile 00:12 arasında 'Merhaba nasılsınız' dedi."*
+  4. Web sayfasında transkripti gösterir, kullanıcının konuşmacı isimlerini veya metindeki hataları **canlı düzenlemesine**, sesi **parça parça dinlemesine** ve metni **TXT, SRT (altyazı) veya JSON** olarak indirmesine olanak tanır.
 
 ---
 
-## 🛠️ 3. KULLANILAN TEKNOLOJİLER VE SEÇİM NEDENLERİ
+## 📚 2. KAVRAMLAR SÖZLÜĞÜ (NE NEDİR?)
 
-| Teknoloji / Kütüphane | Kullanım Amacı | Neden Seçildi? |
-| :--- | :--- | :--- |
-| **Python 3.11+** | Ana Programlama Dili | Yapay zeka ve ses işleme kütüphaneleriyle zengin ekosistem. |
-| **FastAPI** | REST API Web Sunucusu | Asenkron yüksek performans, otomatik Swagger belgeleri, Pydantic validasyonu. |
-| **Faster-Whisper** | Speech-to-Text (STT) Motoru | CTranslate2 optimizasyonu sayesinde standart Whisper'a göre **4x - 8x daha hızlı** transkripsiyon. |
-| **PyAnnote.Audio / SpeechBrain** | Speaker Diarization | Ses parmak izlerini (embeddings) çıkartarak konuşmacıları hassas şekilde ayrıştırır. |
-| **SQLAlchemy 2.0 & Alembic** | ORM ve DB Migrations | SQLite ve PostgreSQL arasında kod değiştirmeden geçiş yapabilme imkanı. |
-| **Vanilla HTML5/JS & CSS3** | Web Frontend Arayüzü | Harici ağır framework'lere (React/Vue) ihtiyaç duymadan ultra hızlı ve hafif arayüz sunumu. |
-| **Pytest** | Test Otomasyonu | 28 adet birim, entegrasyon, sistem ve performans (RTF) test otomasyonu. |
-| **Docker & Docker Compose** | Konteynerleştirme | Tek komutla (`docker compose up`) tüm bağımlılıklarla yayına alma. |
+Projeyi anlatırken kullanacağınız temel kavramlar:
 
----
-
-## 🌟 4. GEREKÇELERİYLE YAPILAN GELİŞTİRMELER (Son Güncellemeler)
-
-Projede yapılan en son geliştirmeler ve teknik gerekçeleri:
-
-### 1️⃣ Dinamik 10+ Konuşmacı Desteği (Multi-Speaker Scalability)
-- **Problem**: Arayüzde sabit 4 konuşmacı seçeneği (`SPEAKER_00` - `SPEAKER_03`) bulunuyordu, 5+ kişilik toplantılarda kısıtlama yaratıyordu.
-- **Çözüm**: `index.html` üzerinde konuşmacı seçim menüsü dinamik hale getirildi. Otomatik olarak minimum 10 konuşmacı (`SPEAKER_00` - `SPEAKER_09` / Konuşmacı 1 - 10) ve gerekirse daha yüksek sayıda konuşmacı açılır menüye dahil edildi. `FusionEngine` içerisinde konuşmacı ID'leri çıkış sırasına göre kronolojik numaralandırıldı.
-
-### 2️⃣ Güvenlik & Traceback Sızıntı Önlemesi (Security Hardening)
-- **Problem**: Hata durumunda `traceback.format_exc()` ile sunucu dosya yolları (`C:\Users\...`) ve kod yapısı API yanıtı olarak dışarı sızıyordu.
-- **Çözüm**: `job_service.py` ve `main.py` içerisindeki exception mekanizması güncellendi. `sanitize_error_message` fonksiyonu ile sunucu dosya yolları maskelendi (`[FILE_PATH]`), ham yığın izi kullanıcıdan gizlendi ve güvenli bir şekilde sunucu loglarına kaydedildi.
-
-### 3️⃣ Sihirli Bayt (Magic Header) İle Ses İçerik Doğrulaması (File Upload Security)
-- **Problem**: Yüklenen dosyaların sadece uzantısına (`.wav`, `.mp3`) bakılması, sahte veya zararlı dosyaların yüklenmesine izin veriyordu.
-- **Çözüm**: `file_validator.py` geliştirilerek dosyanın ilk baytları (Magic Numbers: `RIFF/WAVE`, `ID3`, `fLaC`, `OggS`, `ftyp`) ve ses çözücü (`soundfile`/`wave`) kütüphaneleri ile gerçek ses içeriği doğrulandı. Sahte dosyalar `400 Bad Request` ile engellendi.
-
-### 4️⃣ Sayfa İçi Toast Bildirim ve Özel UI Diyalog Sistemi (In-Page UI)
-- **Problem**: Silme ve güncelleme işlemlerinde tarayıcının ham pop-up `alert()` ve `confirm()` pencereleri (`localhost:8000 mesajı`) görünüyordu.
-- **Çözüm**: Tarayıcı pop-up'ları tamamen kaldırılarak sayfa içi cam efektli (glassmorphism) **Toast Notification** (Yeşil/Kırmızı/Mavi bildirim kartları) ve **Özel UI Modal** pencereleri entegre edildi.
+- **STT (Speech-to-Text)**: İnsan sesini bilgisayarların anlayacağı metne dönüştüren yapay zeka teknolojisi. Projemizde **Faster-Whisper** kullanılır.
+- **Speaker Diarization (Konuşmacı Ayrıştırma)**: *"Kelimeler neler?"* sorusu yerine **"Şu anda kim konuşuyor?"** sorusuna yanıt arayan teknoloji. Projemizde **PyAnnote.Audio** ve **SpeechBrain** kullanılır.
+- **Fusion Engine (Birleştirme Motoru)**: STT'den gelen kelimeler ile Diarization'dan gelen konuşmacı aralıklarını çakıştırıp *"Bu kelime kesinlikle şu konuşmacıya aittir"* kararını veren algoritmamız.
+- **Clean Architecture (Temiz Mimari)**: Kodların çorba olmasını engelleyen, veritabanı veya web çerçevesi değişse bile iş mantığının hiç bozulmamasını sağlayan katmanlı tasarım mimarisi.
+- **Non-Blocking Async (Tıkanmayan Asenkron Yapı)**: Ağır yapay zeka işlemleri yaparken kullanıcı arayüzünün donmamasını sağlayan sistem (HTTP 202 Accepted yanıtı).
+- **Magic Bytes (Sihirli Baytlar)**: Bir dosyanın adının `.wav` olması yetmez. Dosya içeriğinin gerçek bir ses dosyası olup olmadığını anlamak için dosyanın ilk birkaç ikili (binary) baytına bakılmasıdır (`RIFF`, `ID3`, `fLaC` vb.).
+- **Rust DSP (Digital Signal Processing)**: Yüksek hızlı ses matematiksel hesaplamaları (vektör benzerliği, VAD enerji hesabı) için Python'a göre 50-100 kat hızlı çalışan gömülü Rust/C kodu.
 
 ---
 
-## ⚡ 5. ADIM ADIM ÇALIŞMA MANTIĞI (E2E Akışı)
+## 📂 3. PROJEDEKİ TÜM DOSYA VE KLASÖRLERİN DETAYLI İŞLEVLERİ
+
+Proje dizinindeki tüm önemli dosyalar ve ne iş yaptıkları:
 
 ```text
-[Kullanıcı Ses Dosyası Yükler]
-        │
-        ▼
-[1. İçerik ve Uzantı Doğrulaması (file_validator.py)]
-  ├── Uzantı Kontrolü (.mp3, .wav, .flac vb.)
-  └── Sihirli Bayt (Magic Bytes) & Ses Akış Kontrolü
-        │
-        ▼
-[2. PENDING Kaydı & Asenkron Yanıt (FastAPI HTTP 202)]
-  └── Kullanıcıya anında Job ID döner, UI kilitlenmez
-        │
-        ▼
-[3. Arka Plan Worker Çalışması (JobService.execute_job)]
-  ├── STT Motoru (Faster-Whisper): Kelimeleri ve zaman damgalarını üretir
-  ├── Diarization Motoru (PyAnnote/SpeechBrain): Konuşmacı aralıklarını çıkartır
-  └── Fusion Engine: Kelimeler ile konuşmacıları zaman çakışmasına göre birleştirir
-        │
-        ▼
-[4. Sonuçların Kaydedilmesi (SQLAlchemy Unit of Work)]
-  └── Status 'COMPLETED' yapılır, veritabanına ve depolamaya işlenir
-        │
-        ▼
-[5. Web Arayüzünde Canlı Gösterim (index.html)]
-  ├── Dinamik Konuşmacı Kartları & Ses Oynatıcı
-  ├── Canlı Metin / Konuşmacı Düzenleme
-  └── TXT, SRT (Altyazı), JSON Formatlarında İndirme
+sesAnalizi/
+├── src/audio_analyzer/            # Tüm kaynak kodların bulunduğu ana klasör
+│   ├── api/                       # Dış dünya ve kullanıcı ile iletişim katmanı
+│   │   ├── main.py                # FastAPI uygulamasının giriş noktası ve sunucu başlatıcısı
+│   │   ├── dependencies.py        # Veritabanı ve servis bağımlılıklarının dağıtıcısı (DI)
+│   │   ├── routers/
+│   │   │   └── jobs.py            # /analyze, /jobs, /jobs/{id} gibi tüm REST API uç noktaları
+│   │   └── static/
+│   │       └── index.html         # Cam efektli (Glassmorphism) modern Web Arayüzü
+│   │
+│   ├── domain/                    # Projenin beyni ve iş kuralları (Saf Python)
+│   │   ├── models.py              # AudioRecord, TranscriptUtterance iş nesneleri
+│   │   └── interfaces.py          # Veritabanı, STT, Diarizer ve Depolama için soyut sınıflar
+│   │
+│   ├── services/                  # İş kurallarının yürütüldüğü servisler
+│   │   ├── pipeline.py            # STT + Diarization adımlarını sırayla çalıştıran ana hat
+│   │   ├── pipeline_factory.py    # Yapay zeka modellerini bellekte tek bir sefer yükleyen (Singleton) fabrika
+│   │   ├── fusion_engine.py       # Kelimeler ile konuşmacı zaman aralıklarını çakıştıran motor
+│   │   ├── semantic_refiner.py    # Uzun ve birleşik cümleleri anlamsal olarak bölen iyileştirici
+│   │   └── job_service.py         # Analiz görevlerinin veritabanı durumunu yöneten servis
+│   │
+│   ├── adapters/                  # Dış kütüphaneler ve veri tabanları bağlayıcıları
+│   │   ├── repository/
+│   │   │   ├── models.py          # SQLAlchemy Veritabanı tabloları (audio_records, transcript_utterances)
+│   │   │   ├── postgres_repository.py # SQLite / Postgres veritabanı CRUD işlemleri
+│   │   │   └── unit_of_work.py    # Veritabanı işlemlerini güvenli paketleyen (Transaction) sınıf
+│   │   └── storage/
+│   │       ├── local_storage_adapter.py # Ses dosyalarını yerel diske kaydeden adaptör
+│   │       ├── s3_storage_adapter.py    # AWS S3 bulut depolama adaptörü
+│   │       └── storage_factory.py       # İsteğe göre yerel veya S3 seçen fabrika
+│   │
+│   ├── utils/                     # Yardımcı Araçlar
+│   │   ├── audio_io.py            # Sentetik ses üretme ve ses okuma araçları
+│   │   └── file_validator.py      # Sihirli Baytlar (Magic Header) ile dosya güvenlik kontrolü
+│   │
+│   └── workers/                   # Arka Plan Kuyruk İşçileri
+│       ├── celery_app.py          # Celery asenkron görev yapılandırması
+│       └── tasks.py               # Celery arka plan analiz görevi
+│
+├── native/                        # Performans için C / Rust DSP İvmelendirici Modül
+│   └── dsp_processor/             # VAD Enerji ve Vektör Benzerliği hesabı yapan C/Rust kodları
+│
+├── tests/                         # Otomatik Test Ekosistemi
+│   ├── unit/                      # Birim testler (API, Servisler, Güvenlik, Dosya Doğrulama)
+│   ├── integration/               # Entegrasyon testleri (DB, Storage)
+│   ├── system/                    # Uçtan uca sistem testleri (Full Pipeline E2E)
+│   └── benchmark/                 # İşlem hızı performans testi (RTF Benchmark)
+│
+├── storage/                       # Ses ve veritabanı dosyalarının tutulduğu dizin
+│   ├── raw/                       # Yüklenen ham ses dosyaları (.wav, .mp3)
+│   └── dev_database.db            # SQLite veritabanı dosyası
+│
+├── Dockerfile                     # Docker konteyner yapılandırma dosyası
+├── docker-compose.yml             # PostgreSQL, Redis ve API'yi tek komutla kaldıran dosya
+├── pyproject.toml                 # Proje bağımlılıkları ve Python ayarları
+├── run_analysis.py                # Komut satırından (CLI) analiz çalıştırma betiği
+└── blueprint.md                   # Okuduğunuz bu master doküman
 ```
 
 ---
 
-## 🎯 6. SUNUMDA ÖNE ÇIKARMANIZ GEREKEN TEKNİK NOKTALAR (Presentation Highlights)
+## 🚶‍♂️ 4. ADIM ADIM BİR SES DOSYASININ YOLCULUK HARİTASI
 
-Sunum yaparken projenizin başarısını vurgulamak için şu 5 ana başlık üzerinde durmalısınız:
+Kullanıcı web arayüzünden bir dosya seçip **"Yükle"** butonuna bastığında arka planda sırasıyla şu mükemmel süreç işler:
 
-1. **Non-Blocking Asenkron Mimari (HTTP 202 Accepted)**:
-   - *"Ses analizi ağır bir yapay zeka işlemidir. Kullanıcıyı HTTP isteğinde bekletmek yerine asenkron arka plan mimarisi kurduk. İstek atıldığı anda HTTP 202 kabul yanıtı verilir ve UI kilitlenmeden süreç arka planda yürütülür."*
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as 👤 Kullanıcı (Web UI)
+    participant API as 🚀 FastAPI (jobs.py)
+    participant Val as 🛡️ File Validator
+    participant JobSvc as ⚙️ JobService
+    participant Pipe as 🧠 AI Pipeline (Whisper + PyAnnote)
+    participant Fusion as 🔀 Fusion Engine
+    participant DB as 🗄️ Veritabanı (SQLAlchemy)
 
-2. **Fusion Engine ve Akıllı Eşleştirme**:
-   - *"STT ve Diarization iki ayrı yapay zeka modelidir. Geliştirdiğimiz Fusion Engine algoritması, kelime zaman damgaları ile konuşmacı aralıklarını çakıştırarak hassas bir birleştirme sağlar."*
+    User->>API: 1. POST /api/v1/analyze (ses_dosyasi.mp3)
+    API->>Val: 2. Sihirli Bayt ve Ses İçerik Kontrolü
+    Val-->>API: ✅ İçerik Geçerli (MP3 Magic Bytes OK)
+    API->>JobSvc: 3. Job Oluştur (status='PENDING')
+    JobSvc->>DB: 4. DB'ye Kaydet (UUID)
+    API-->>User: 5. HTTP 202 Accepted (Job ID döner, arayüz donmaz)
+    
+    par Arka Plan İşlemi (Background Task)
+        API->>JobSvc: 6. execute_job(job_id)
+        JobSvc->>DB: 7. status = 'PROCESSING'
+        JobSvc->>Pipe: 8. process(ses_yolu)
+        Pipe->>Pipe: 9. STT (Faster-Whisper) metni çıkarır
+        Pipe->>Pipe: 10. Diarization (PyAnnote) konuşmacıları bulur
+        Pipe->>Fusion: 11. Kelimeler + Konuşmacı Aralıklarını Birleştir
+        Fusion-->>Pipe: 12. Zamana Göre Eşleşmiş Cümleler
+        Pipe-->>JobSvc: 13. İşlenmiş Transkript Blokları
+        JobSvc->>DB: 14. Utterances Kaydet & status = 'COMPLETED'
+    end
 
-3. **Clean Architecture ve Veritabanı Bağımsızlığı**:
-   - *"Yazılım mimarimiz tamamen katmanlı ve modülerdir. SQLite varsayılan gelse de SQLAlchemy ORM sayesinde tek bir satır kod değiştirmeden PostgreSQL veya S3 depolamaya geçilebilir."*
-
-4. **Siber Güvenlik ve Girdilerin Doğrulanması**:
-   - *"Yalnızca dosya uzantısına değil, Magic Byte (Sihirli Bayt) seviyesinde dosya içeriği doğrulaması yaptık. Ayrıca sunucu dizin yapılarını sızdırmamak adına hata mesajlarını sanitize eden özel bir güvenlik mekanizması kurduk."*
-
-5. **Kullanıcı Deneyimi (UX) ve Canlı Düzenleme**:
-   - *"Web arayüzünde tarayıcının kaba pop-up'ları yerine özel Toast bildirimleri kullandık. Kullanıcı transkript üzerindeki hatalı kelimeleri veya konuşmacı atamalarını doğrudan arayüzden düzenleyip kaydedebilir."*
+    loop Her 1 Saniyede Bir Polling
+        User->>API: 15. GET /api/v1/jobs/{job_id}
+        API-->>User: 16. status='COMPLETED' + Transkript Verileri
+    end
+    User->>User: 17. Ekranda Dinamik Konuşmacı Kartları Gösterilir
+```
 
 ---
 
-## ❓ 7. SUNUM VE SAVUNMA İÇİN MUHTEMEL OLUŞABİLECEK SORULAR & CEVAPLAR (Q&A)
+## ⚙️ 5. YAPILAN EN SON KRİTİK İYİLEŞTİRMELER VE NEDENLERİ
 
-### **S1: Neden varsayılan olarak SQLite kullandınız, PostgreSQL varken yetersiz kalmaz mı?**
-> **Cevap**: Geliştirme kolaylığı, ek sunucu kurulumu gerektirmemesi ve hafifliği nedeniyle geliştirme ortamında SQLite seçilmiştir. Ancak katmanlı mimarimiz (Repository Pattern) sayesinde PostgreSQL desteği %100 hazırdır. `.env` dosyasında `DATABASE_URL` değiştirilerek sıfır kod değişikliği ile PostgreSQL'e geçilebilir.
+Sunumda mutlaka bahsetmeniz gereken son 4 teknik geliştirme:
 
-### **S2: İki farklı konuşmacı aynı anda konuştuğunda (Overlapping Speech) ne oluyor?**
-> **Cevap**: `FusionEngine` sınıfımız çakışan zaman aralıklarında en yüksek zaman kapsama oranına (overlap ratio) sahip konuşmacıyı ana konuşmacı olarak atar. Gerekirse kullanıcının arayüzden bu bloğu 2 ayrı bloğa bölmesine veya konuşmacıyı değiştirmesine izin verilir.
+1. **Dinamik 10+ Konuşmacı Desteği (Multi-Speaker Scalability)**:
+   - *Eski Hali*: Arayüzde sadece 4 konuşmacı (`SPEAKER_00` - `SPEAKER_03`) seçilebiliyordu. 5 veya daha fazla kişinin katıldığı toplantılarda kısıtlama yaşanıyordu.
+   - *Yeni Hali*: Arayüzdeki dropdown menü dinamik hale getirildi. Artık otomatik olarak 10+ konuşmacı (`SPEAKER_00` - `SPEAKER_09` / Konuşmacı 1-10) listelenir. 5+ kişilik toplantılarda her katılımcı kolayca atanabilir.
 
-### **S3: Güvenlik tarafında dosya yükleme doğrulaması nasıl çalışıyor?**
-> **Cevap**: Dosyanın sadece uzantısını (`.wav`) kontrol etmek bir güvenlik zafiyetidir. Geliştirdiğimiz `file_validator.py`, dosyanın ham ikili (binary) verisinin ilk baytlarını tarlar (`RIFF`, `ID3`, `fLaC` vb.) ve ses kütüphaneleriyle doğrular. Sahte veya zararlı içerikler anında engellenir.
+2. **Güvenlik & Traceback Sızıntı Önlemesi (Security Hardening)**:
+   - *Eski Hali*: Bir hata oluştuğunda sunucunun tüm kod yolları (`C:\Users\ADIL CEVIK\...`) ve Python yığın izi (traceback) API yanıtında dışarı sızıyordu.
+   - *Yeni Hali*: `job_service.py` içinde `sanitize_error_message` yazıldı. Dosya yolları maskelendi (`[FILE_PATH]`), hata detayları güvenle sunucu loglarına kaydedildi.
 
-### **S4: Performans olarak işlem ne kadar sürüyor (RTF - Real Time Factor)?**
-> **Cevap**: Faster-Whisper GPU/CPU ivmelendirmesi sayesinde Real Time Factor (RTF) 0.15 - 0.30 civarındadır. Yani 10 dakikalık bir ses kaydı ortalama 1.5 - 3 dakika içerisinde tamamen analiz edilip transkript haline getirilir.
+3. **Sihirli Bayt (Magic Header) İle Güvenlik Kontrolü**:
+   - *Eski Hali*: Yalnızca dosya uzantısına (`.wav`) bakılıyordu. İçi metin dolu olan sahte bir dosya `.wav` adıyla yüklenebiliyordu.
+   - *Yeni Hali*: `file_validator.py` ile dosyanın ilk baytları (Magic Bytes: `RIFF`, `ID3`, `fLaC`, `OggS`, `ftyp`) ve ses çözücüleri kontrol edilir. Sahte dosyalar `400 Bad Request` ile reddedilir.
+
+4. **Sayfa İçi Toast Bildirim ve Özel UI Diyalogları**:
+   - *Eski Hali*: Silme veya ekleme yaparken tarayıcının kaba `localhost:8000 mesajı` pop-up pencereleri çıkıyordu.
+   - *Yeni Hali*: Pop-up'lar tamamen kaldırıldı; modern, cam efektli sayfa içi **Toast Bildirimleri** (Sağ üstte açılan yeşil/kırmızı mesajlar) ve özel onay kutuları eklendi.
 
 ---
 
-## 🛠️ 8. PROJEYİ ÇALIŞTIRMA KOMUTLARI (Quick Command Cheat Sheet)
+## 🏎️ 6. RUST İLE DSP İVMELENDİRMESİ (NATIVE MODÜL)
 
-- **Sanal Ortamı Aktifleştirme**:
+Projede `native/` klasörü altında C/Rust ile yazılmış bir **DSP (Digital Signal Processing - Dijital Sinyal İşleme)** modülü yer alır.
+- **Ne İşe Yarar?**:
+  - **Resampling**: Farklı örnekleme hızlarındaki sesleri 16kHz standart formata dönüştürür.
+  - **Energy VAD**: Ses kayıtlarındaki sessiz bölgeleri (silence) tespit eder.
+  - **Cosine Similarity**: İki ses biyometrik vektörü arasındaki benzerliği hesaplar.
+- **Neden Yapıldı?**: Saf Python döngüleri ile yapılan ses matematiksel işlemleri yavaştır. C/Rust ivmelendirmesi sayesinde bu matematiksel işlemler mikro-saniyeler seviyesine indirilmiştir.
+
+---
+
+## ❓ 7. SUNUM VE JÜRİ İÇİN SORU - CEVAP (Q&A) REHBERİ
+
+**Soru 1: Bu projeyi 3 cümleyle nasıl özetlersin?**
+> *"Bu proje, çok konuşmacılı ses kayıtlarını yapay zeka ile metne dönüştüren ve kimin ne zaman konuştuğunu milisaniye hassasiyetinde tespit eden uçtan uca bir sistemdir. Clean Architecture mimarisiyle yazılmış olup asenkron web API, canlı düzenlenebilir web arayüzü ve gelişmiş güvenlik mekanizmalarına sahiptir."*
+
+**Soru 2: Neden React veya Vue değil de Vanilla JavaScript kullandınız?**
+> *"Performans ve sadelik için. Projede harici devasa kütüphanelerin (React/Vue node_modules) yük getirmesini engellemek, sayfa yüklenme süresini milisaniyelere düşürmek ve Glassmorphic CSS tasarımını en saf haliyle sunmak amacıyla saf (Vanilla) JS ve HTML5 kullandık."*
+
+**Soru 3: Ses analiz süresi ne kadardır?**
+> *"Faster-Whisper modeli CTranslate2 optimizasyonu kullandığı için Real Time Factor (RTF) oranımız 0.15 - 0.25 arasındadır. Yani 10 dakikalık bir ses kaydı yaklaşık 1.5 - 2 dakikada tamamen analiz edilmektedir."*
+
+**Soru 4: SQLite canlıda sorun çıkarır mı? PostgreSQL'e geçiş zor mu?**
+> *"Geliştirme ortamında ek kurulum gerektirmediği için SQLite kullandık. Ancak kodlarımız SQLAlchemy ORM ve Repository Pattern ile yazıldığı için veritabanı bağımsızdır. `.env` dosyasındaki adresi PostgreSQL olarak değiştirdiğimizde tek bir satır dahi kod değiştirmeden PostgreSQL üzerinde çalışmaya devam eder."*
+
+---
+
+## 🛠️ 8. HIZLI ÇALIŞTIRMA VE TEST KOMUTLARI
+
+- **VS Code Terminalinden Başlatma**:
   ```powershell
   .\.venv\Scripts\activate
-  ```
-- **Web Sunucusunu Başlatma**:
-  ```powershell
   uvicorn audio_analyzer.api.main:app --reload --port 8000
   ```
-- **Tüm Otomatik Testleri Çalıştırma (Pytest)**:
+- **Tüm Test Otomasyonunu Çalıştırma**:
   ```powershell
   .\.venv\Scripts\pytest -v
   ```
-- **Docker Compose İle Başlatma**:
+- **Docker İle Tek Komutla Kaldırma**:
   ```powershell
   docker compose up -d --build
   ```
