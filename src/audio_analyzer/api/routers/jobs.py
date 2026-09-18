@@ -129,6 +129,14 @@ async def upload_and_analyze_audio(
             detail=f"Dosya boyutu çok büyük ({len(file_bytes) / (1024 * 1024):.1f} MB). Maksimum izin verilen limit: 100 MB.",
         )
 
+    from audio_analyzer.utils.file_validator import is_valid_audio_content
+
+    if not is_valid_audio_content(file_bytes, file.filename):
+        raise HTTPException(
+            status_code=400,
+            detail="Yüklenen dosya geçerli ve bozulmamış bir ses dosyası içeriği (WAV, MP3, FLAC, M4A, OGG) taşımıyor.",
+        )
+
     storage = get_storage_adapter()
     job_service = JobService(storage=storage, repository=repository)
     job_id = job_service.create_job(file_name=file.filename, file_bytes=file_bytes)
