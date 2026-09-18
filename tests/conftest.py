@@ -1,9 +1,16 @@
+import os
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from audio_analyzer.adapters.repository.models import Base
 from audio_analyzer.domain.models import DiarizationSegment, WordSegment
+
+
+@pytest.fixture(autouse=True)
+def enable_mock_stt_for_tests(monkeypatch):
+    """Birim ve entegrasyon testlerinin RAM yetersizliğinden etkilenmemesi için ALLOW_MOCK_STT=true ayarlar."""
+    monkeypatch.setenv("ALLOW_MOCK_STT", "true")
 
 
 @pytest.fixture

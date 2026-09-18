@@ -43,7 +43,10 @@ class FusionEngine:
         attributed_words = self._smooth_attributed_words(attributed_words)
 
         # 2. Kelimeleri Konuşmacı ve Sessizlik eşiğine göre gruplayarak Utterance blokları oluşturma
-        return self._group_words_into_utterances(attributed_words)
+        raw_utterances = self._group_words_into_utterances(attributed_words)
+
+        # 3. Konuşmacıları ilk görünme (kronolojik ses) sırasına göre SPEAKER_00, SPEAKER_01... olarak sıralama
+        return self._normalize_speaker_ids(raw_utterances)
 
     def _find_best_speaker_for_word(
         self, word: WordSegment, diarization_segments: List[DiarizationSegment]
@@ -136,3 +139,23 @@ class FusionEngine:
                 smoothed[i] = (smoothed[i][0], prev_spk)
 
         return smoothed
+
+    def _normalize_speaker_ids(
+        self, utterances: List[TranscriptUtterance]
+    ) -> List[TranscriptUtterance]:
+        """
+        Gözlemlenme (kronolojik ses sırası) önceliğine göre konuşmacı isimlerini
+        düzenli biçimde SPEAKER_00, SPEAKER_01, SPEAKER_02... olarak yeniden sıralar.
+        """
+        speaker_map = {}
+        counter = 0
+
+        for utt in utterances:
+            if utt.speaker_id == "SPEAKER_UNKNOWN":
+                continue
+            if utt.speaker_id not in speaker_map:
+                speaker_map[utt.speaker_id] = f"SPEAKER_{counter:02d}"
+                counter += 1
+            utt.speaker_id = speaker_map[utt.speaker_id]
+
+        return utterances
