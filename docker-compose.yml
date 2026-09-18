@@ -7,6 +7,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: audio_analyzer_app:latest
     container_name: audio_analyzer_web
     restart: always
     ports:
@@ -30,6 +31,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: audio_analyzer_app:latest
     container_name: audio_analyzer_worker
     restart: always
     command: celery -A audio_analyzer.workers.celery_app worker --loglevel=info
