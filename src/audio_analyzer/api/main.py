@@ -86,7 +86,8 @@ def health_check():
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
     except Exception as e:
-        db_status = f"ERROR: {e}"
+        logger.error("Health check database connection error: %s", e, exc_info=True)
+        db_status = "ERROR"
 
     is_healthy = db_status == "OK"
     return Response(

@@ -1,10 +1,28 @@
-import traceback
+import logging
+import re
 import uuid
 from typing import Optional
 
 from audio_analyzer.domain.interfaces import IAudioStorage, ITranscriptRepository
 from audio_analyzer.domain.models import AudioRecord, JobStatus
 from audio_analyzer.services.pipeline import AudioAnalysisPipeline
+
+logger = logging.getLogger(__name__)
+
+
+def sanitize_error_message(ex: Exception) -> str:
+    """
+    Sistem dosya yollarını, sunucu dizin yapısını ve iç detayları sızdırmamak
+    için kullanıcıya dönecek hata mesajını temizler.
+    """
+    err_type = type(ex).__name__
+    err_str = str(ex)
+
+    # Windows ve Unix mutlak dosya yollarını maskele (örn. C:\Users\... veya /var/...)
+    err_str = re.sub(r'[A-Za-z]:\\[^\s:]+', '[FILE_PATH]', err_str)
+    err_str = re.sub(r'/(?:[^\s:]+/)+[^\s:]+', '[FILE_PATH]', err_str)
+
+    return f"{err_type}: {err_str}"
 
 
 class JobService:
@@ -68,6 +86,8 @@ class JobService:
             return True
 
         except Exception as ex:
-            error_msg = f"{type(ex).__name__}: {str(ex)}\n{traceback.format_exc()}"
-            self.repo.update_status(record_id, JobStatus.FAILED, error_message=error_msg)
+            logger.error("Job execution failed for job_id=%s: %s", record_id, ex, exc_info=True)
+            sanitized_msg = sanitize_error_message(ex)
+            self.repo.update_status(record_id, JobStatus.FAILED, error_message=sanitized_msg)
             return False
+
