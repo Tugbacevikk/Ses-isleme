@@ -242,12 +242,243 @@
             line-height: 1.6;
             color: #e2e8f0;
         }
+
+        /* --- In-Page Toast Notification System --- */
+        #toastContainer {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            max-width: 420px;
+            width: calc(100vw - 3rem);
+            pointer-events: none;
+        }
+
+        .toast {
+            pointer-events: auto;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 0.85rem;
+            padding: 1rem 1.25rem;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+            display: flex;
+            align-items: flex-start;
+            gap: 0.85rem;
+            color: #f8fafc;
+            font-size: 0.9rem;
+            animation: toastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            transition: all 0.3s ease;
+        }
+
+        .toast.toast-error {
+            border-left: 4px solid #ef4444;
+            background: rgba(30, 18, 28, 0.96);
+        }
+
+        .toast.toast-success {
+            border-left: 4px solid #10b981;
+            background: rgba(18, 35, 28, 0.96);
+        }
+
+        .toast.toast-info {
+            border-left: 4px solid #3b82f6;
+            background: rgba(18, 28, 45, 0.96);
+        }
+
+        .toast-icon {
+            font-size: 1.25rem;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .toast-body {
+            flex-grow: 1;
+        }
+
+        .toast-title {
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-bottom: 0.2rem;
+        }
+
+        .toast-message {
+            color: #cbd5e1;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            word-break: break-word;
+        }
+
+        .toast-close {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 1rem;
+            line-height: 1;
+            padding: 0.2rem;
+            margin-left: 0.5rem;
+        }
+
+        .toast-close:hover {
+            color: #f8fafc;
+        }
+
+        @keyframes toastSlideIn {
+            from {
+                opacity: 0;
+                transform: translateX(100%) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0) scale(1);
+            }
+        }
+
+        @keyframes toastFadeOut {
+            to {
+                opacity: 0;
+                transform: translateX(100%) scale(0.9);
+            }
+        }
+
+        /* --- Custom Modal Dialog System --- */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 9990;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .modal-dialog {
+            background: #1e293b;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 1.25rem;
+            width: 100%;
+            max-width: 480px;
+            padding: 1.75rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+            animation: modalPop 0.25s ease-out forwards;
+        }
+
+        @keyframes modalPop {
+            from {
+                opacity: 0;
+                transform: scale(0.92);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .modal-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #f8fafc;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .modal-body {
+            color: #94a3b8;
+            font-size: 0.95rem;
+            margin-bottom: 1.5rem;
+            line-height: 1.5;
+        }
+
+        .modal-input {
+            width: 100%;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            color: #f8fafc;
+            padding: 0.6rem 0.85rem;
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+            outline: none;
+        }
+
+        .modal-input:focus {
+            border-color: #8b5cf6;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+        }
+
+        .btn-modal-cancel {
+            background: rgba(255, 255, 255, 0.08);
+            color: #94a3b8;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 0.55rem 1.25rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-modal-cancel:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #f8fafc;
+        }
+
+        .btn-modal-confirm {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            border: none;
+            padding: 0.55rem 1.25rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-modal-confirm.btn-primary {
+            background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+        }
     </style>
 </head>
 <body>
+    <!-- Toast Bildirim Kabı -->
+    <div id="toastContainer"></div>
+
+    <!-- Özel UI Onay & Girdi Dialog'u -->
+    <div id="customModalBackdrop" class="modal-backdrop">
+        <div class="modal-dialog">
+            <div id="modalTitle" class="modal-title">Başlık</div>
+            <div id="modalBody" class="modal-body">İçerik</div>
+            <div class="modal-footer">
+                <button id="modalCancelBtn" class="btn-modal-cancel">İptal</button>
+                <button id="modalConfirmBtn" class="btn-modal-confirm">Tamam</button>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <header>
+            <div class="logo-badge">🎙️ Antigravity AI Engine</div>
             <h1>Ses Analizi ve Konuşmacı Algılama</h1>
+            <p class="subtitle">Gelişmiş Yapay Zeka ile Otomatik Transkripsiyon ve Diyarizasyon</p>
         </header>
 
         <!-- Yükleme Kartı -->
@@ -317,6 +548,103 @@
     </div>
 
     <script>
+        // --- Web Sayfası İçi Toast & Modal Yönetimi ---
+        function showToast(message, type = 'info', title = '') {
+            const container = document.getElementById('toastContainer');
+            if (!container) return;
+
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+
+            let icon = 'ℹ️';
+            if (type === 'error') icon = '❌';
+            if (type === 'success') icon = '✅';
+            if (type === 'info') icon = '🔔';
+
+            const defaultTitle = type === 'error' ? 'Hata' : (type === 'success' ? 'Başarılı' : 'Bilgi');
+
+            toast.innerHTML = `
+                <div class="toast-icon">${icon}</div>
+                <div class="toast-body">
+                    <div class="toast-title">${escapeHtml(title || defaultTitle)}</div>
+                    <div class="toast-message">${escapeHtml(message)}</div>
+                </div>
+                <button class="toast-close" onclick="this.parentElement.remove()">✕</button>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.animation = 'toastFadeOut 0.3s forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 4500);
+        }
+
+        function showConfirmModal(title, message, onConfirm) {
+            const backdrop = document.getElementById('customModalBackdrop');
+            const titleElem = document.getElementById('modalTitle');
+            const bodyElem = document.getElementById('modalBody');
+            const confirmBtn = document.getElementById('modalConfirmBtn');
+            const cancelBtn = document.getElementById('modalCancelBtn');
+
+            titleElem.innerHTML = `⚠️ ${escapeHtml(title)}`;
+            bodyElem.innerHTML = escapeHtml(message);
+            confirmBtn.className = 'btn-modal-confirm';
+            confirmBtn.textContent = 'Evet, Sil';
+
+            backdrop.style.display = 'flex';
+
+            const cleanup = () => {
+                backdrop.style.display = 'none';
+                confirmBtn.onclick = null;
+                cancelBtn.onclick = null;
+            };
+
+            confirmBtn.onclick = () => {
+                cleanup();
+                onConfirm();
+            };
+            cancelBtn.onclick = cleanup;
+        }
+
+        function showPromptModal(title, fields, onSubmit) {
+            const backdrop = document.getElementById('customModalBackdrop');
+            const titleElem = document.getElementById('modalTitle');
+            const bodyElem = document.getElementById('modalBody');
+            const confirmBtn = document.getElementById('modalConfirmBtn');
+            const cancelBtn = document.getElementById('modalCancelBtn');
+
+            titleElem.innerHTML = `📝 ${escapeHtml(title)}`;
+            bodyElem.innerHTML = fields.map(f => `
+                <div style="margin-bottom: 0.75rem;">
+                    <label style="font-size: 0.85rem; color: #94a3b8; display: block; margin-bottom: 0.25rem;">${escapeHtml(f.label)}</label>
+                    <input id="${f.id}" type="text" class="modal-input" value="${escapeHtml(f.value || '')}" placeholder="${escapeHtml(f.placeholder || '')}">
+                </div>
+            `).join('');
+
+            confirmBtn.className = 'btn-modal-confirm btn-primary';
+            confirmBtn.textContent = 'Kaydet';
+
+            backdrop.style.display = 'flex';
+
+            const cleanup = () => {
+                backdrop.style.display = 'none';
+                confirmBtn.onclick = null;
+                cancelBtn.onclick = null;
+            };
+
+            confirmBtn.onclick = () => {
+                const results = {};
+                fields.forEach(f => {
+                    const input = document.getElementById(f.id);
+                    results[f.id] = input ? input.value : '';
+                });
+                cleanup();
+                onSubmit(results);
+            };
+            cancelBtn.onclick = cleanup;
+        }
+
         function escapeHtml(str) {
             if (str === null || str === undefined) return '';
             return String(str)
@@ -385,11 +713,13 @@
                 const data = await response.json();
                 const jobId = data.job_id;
 
+                showToast('Ses dosyası analize alındı.', 'info', 'İşlem Başlatıldı');
+
                 // 2. Poll GET /api/v1/jobs/{jobId}
                 pollJobStatus(jobId);
 
             } catch (error) {
-                alert('Hata: ' + error.message);
+                showToast(error.message, 'error', 'Yükleme Hatası');
                 statusContainer.style.display = 'none';
             }
         }
@@ -403,11 +733,12 @@
                     if (job.status === 'COMPLETED') {
                         clearInterval(interval);
                         statusContainer.style.display = 'none';
+                        showToast('Ses analizi başarıyla tamamlandı.', 'success');
                         renderResults(job);
                     } else if (job.status === 'FAILED') {
                         clearInterval(interval);
                         statusContainer.style.display = 'none';
-                        alert('Analiz Başarısız Oldu: ' + (job.error_message || 'Bilinmeyen hata'));
+                        showToast(job.error_message || 'Bilinmeyen hata', 'error', 'Analiz Başarısız Oldu');
                     }
                 } catch (e) {
                     console.error(e);
@@ -531,77 +862,103 @@
         async function fetchAndRefresh(jobId) {
             try {
                 const res = await fetch(`/api/v1/jobs/${jobId}`);
+                if (!res.ok) throw new Error('Güncel veri alınamadı');
                 const job = await res.json();
                 renderResults(job);
             } catch (err) {
                 console.error(err);
+                showToast('Veri yenilenirken hata oluştu.', 'error');
             }
         }
 
-        async function deleteUtterance(jobId, index) {
-            if (!confirm('Bu konuşmacı kutusunu silmek istediğinize emin misiniz?')) return;
-            try {
-                const res = await fetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
-                    method: 'DELETE'
-                });
-                if (res.ok) {
-                    await fetchAndRefresh(jobId);
-                } else {
-                    alert('Silme işlemi başarısız!');
+        function deleteUtterance(jobId, index) {
+            showConfirmModal('Konuşmacı Kutusunu Sil', 'Bu konuşmacı bloğunu silmek istediğinize emin misiniz?', async () => {
+                try {
+                    const res = await fetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
+                        method: 'DELETE'
+                    });
+                    if (res.ok) {
+                        showToast('Konuşmacı bloğu başarıyla silindi.', 'success');
+                        await fetchAndRefresh(jobId);
+                    } else {
+                        const errData = await res.json().catch(() => ({}));
+                        const msg = errData.detail || 'Silme işlemi başarısız!';
+                        showToast(msg, 'error');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    showToast('Sunucu ile iletişim hatası.', 'error');
                 }
-            } catch (err) {
-                console.error(err);
-            }
+            });
         }
 
-        async function addNewUtterance(jobId) {
-            const speakerId = prompt('Konuşmacı Kodu (Örn: SPEAKER_00, SPEAKER_01):', 'SPEAKER_00');
-            if (!speakerId) return;
-            const text = prompt('Metin içeriği:', '');
-            if (text === null) return;
-
-            try {
-                const res = await fetch(`/api/v1/jobs/${jobId}/utterances`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        speaker_id: speakerId,
-                        start_time: 0.0,
-                        end_time: 0.0,
-                        text: text
-                    })
-                });
-                if (res.ok) {
-                    await fetchAndRefresh(jobId);
-                } else {
-                    alert('Yeni blok ekleme başarısız!');
+        function addNewUtterance(jobId) {
+            showPromptModal('Yeni Konuşmacı Bloğu Ekle', [
+                { id: 'spkId', label: 'Konuşmacı Kodu', value: 'SPEAKER_00', placeholder: 'SPEAKER_00' },
+                { id: 'uText', label: 'Metin İçeriği', value: '', placeholder: 'Konuşulan cümleyi giriniz...' }
+            ], async (vals) => {
+                if (!vals.spkId || !vals.uText) {
+                    showToast('Konuşmacı kodu ve metin alanı boş bırakılamaz.', 'error');
+                    return;
                 }
-            } catch (err) {
-                console.error(err);
-            }
+                try {
+                    const res = await fetch(`/api/v1/jobs/${jobId}/utterances`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            speaker_id: vals.spkId,
+                            start_time: 0.0,
+                            end_time: 0.0,
+                            text: vals.uText
+                        })
+                    });
+                    if (res.ok) {
+                        showToast('Yeni konuşmacı bloğu başarıyla eklendi.', 'success');
+                        await fetchAndRefresh(jobId);
+                    } else {
+                        const errData = await res.json().catch(() => ({}));
+                        const msg = errData.detail || 'Yeni blok ekleme başarısız!';
+                        showToast(msg, 'error');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    showToast('Sunucu bağlantı hatası.', 'error');
+                }
+            });
         }
 
         async function updateSpeaker(jobId, index, newSpeaker) {
             const textElem = document.getElementById(`text-${index}`);
             const text = textElem ? textElem.innerText : '';
             try {
-                await fetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
+                const res = await fetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ speaker_id: newSpeaker, text: text })
                 });
+                if (res.ok) {
+                    showToast('Konuşmacı ataması güncellendi.', 'success');
+                } else {
+                    const errData = await res.json().catch(() => ({}));
+                    showToast(errData.detail || 'Güncelleme başarısız!', 'error');
+                }
             } catch (err) {
                 console.error(err);
+                showToast('Sunucu bağlantı hatası.', 'error');
             }
         }
 
         async function updateText(jobId, index, speakerId, newText) {
             try {
-                await fetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
+                const res = await fetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ speaker_id: speakerId, text: newText })
                 });
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    showToast(errData.detail || 'Metin güncelleme başarısız!', 'error');
+                }
             } catch (err) {
                 console.error(err);
             }
@@ -611,12 +968,22 @@
             const textElem = document.getElementById(`text-${index}`);
             const selectElem = document.querySelectorAll('.speaker-select')[index];
             if (textElem && selectElem) {
-                await fetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ speaker_id: selectElem.value, text: textElem.innerText })
-                });
-                alert('Değişiklikler başarıyla kaydedildi!');
+                try {
+                    const res = await fetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ speaker_id: selectElem.value, text: textElem.innerText })
+                    });
+                    if (res.ok) {
+                        showToast('Değişiklikler başarıyla kaydedildi!', 'success');
+                    } else {
+                        const errData = await res.json().catch(() => ({}));
+                        showToast(errData.detail || 'Kaydetme başarısız!', 'error');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    showToast('Sunucu bağlantı hatası.', 'error');
+                }
             }
         }
 
@@ -664,28 +1031,33 @@
             }
         }
 
-        async function deleteJob(jobId) {
-            if (!confirm('Bu ses analizi kaydını ve dosyasını silmek istediğinize emin misiniz?')) return;
-            try {
-                const res = await fetch(`/api/v1/jobs/${jobId}`, { method: 'DELETE' });
-                if (res.ok) {
-                    if (currentJobId === jobId) {
-                        resultsSection.style.display = 'none';
-                        currentJobId = null;
-                        currentJobData = null;
+        function deleteJob(jobId) {
+            showConfirmModal('Analiz Kaydını Sil', 'Bu ses analizi kaydını ve fiziki ses dosyasını tamamen silmek istediğinize emin misiniz?', async () => {
+                try {
+                    const res = await fetch(`/api/v1/jobs/${jobId}`, { method: 'DELETE' });
+                    if (res.ok) {
+                        showToast('Ses analizi kaydı başarıyla silindi.', 'success');
+                        if (currentJobId === jobId) {
+                            resultsSection.style.display = 'none';
+                            currentJobId = null;
+                            currentJobData = null;
+                        }
+                        await loadHistory();
+                    } else {
+                        const errData = await res.json().catch(() => ({}));
+                        const msg = errData.detail || 'Silme işlemi başarısız!';
+                        showToast(msg, 'error');
                     }
-                    await loadHistory();
-                } else {
-                    alert('Silme işlemi başarısız!');
+                } catch (err) {
+                    console.error(err);
+                    showToast('Sunucu ile iletişim hatası.', 'error');
                 }
-            } catch (err) {
-                console.error(err);
-            }
+            });
         }
 
         async function deleteCurrentJob() {
             if (!currentJobId) return;
-            await deleteJob(currentJobId);
+            deleteJob(currentJobId);
         }
 
         function downloadFile(content, fileName, contentType) {
@@ -746,14 +1118,17 @@
                     const job = await res.json();
                     renderResults(job);
                     resultsSection.scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    const errData = await res.json().catch(() => ({}));
+                    showToast(errData.detail || 'Analiz detayı alınamadı.', 'error');
                 }
             } catch (err) {
                 console.error(err);
+                showToast('Sunucu bağlantı hatası.', 'error');
             }
         }
 
         window.addEventListener('DOMContentLoaded', loadHistory);
-        loadHistory();
     </script>
 </body>
 </html>
