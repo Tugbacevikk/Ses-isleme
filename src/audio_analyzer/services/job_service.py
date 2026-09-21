@@ -41,7 +41,7 @@ class JobService:
         self.repo = repository
         self.pipeline = pipeline
 
-    def create_job(self, file_name: str, file_bytes: bytes) -> uuid.UUID:
+    def create_job(self, file_name: str, file_bytes: bytes, callback_url: Optional[str] = None) -> uuid.UUID:
         """
         Yeni bir analiz görevi oluşturur (status='PENDING').
         Ses dosyasını depolamaya kaydeder ve DB kaydını açar.
@@ -54,6 +54,7 @@ class JobService:
             storage_uri=storage_uri,
             file_name=file_name,
             status=JobStatus.PENDING,
+            callback_url=callback_url,
         )
         saved = self.repo.save_record(record)
         return saved.id

@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
@@ -50,6 +50,7 @@ def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
     try:
         storage = get_storage_adapter()
         record_uuid = uuid.UUID(job_id_str)
+        callback_url = None
 
         # 1. Durumu PROCESSING olarak güncelle ve transaction'ı hemen kapat
         with get_uow() as uow:
@@ -58,6 +59,7 @@ def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
                 return
             uow.repository.update_status(record_uuid, JobStatus.PROCESSING)
             storage_uri = record.storage_uri
+            callback_url = record.callback_url
 
         # 2. Uzun süren AI Modellerini çalıştır (DB kilidi YOK)
         from audio_analyzer.services.pipeline_factory import get_shared_pipeline
@@ -72,6 +74,27 @@ def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
             with get_uow() as uow:
                 uow.repository.save_utterances(record_uuid, utterances, language=language)
 
+            if callback_url:
+                from audio_analyzer.services.webhook_service import WebhookService
+
+                webhook_svc = WebhookService()
+                payload = {
+                    "job_id": job_id_str,
+                    "file_name": file_name,
+                    "status": "COMPLETED",
+                    "language": language,
+                    "utterances": [
+                        {
+                            "speaker_id": u.speaker_id,
+                            "start_time": u.start_time,
+                            "end_time": u.end_time,
+                            "text": u.text,
+                        }
+                        for u in utterances
+                    ],
+                }
+                webhook_svc.send_callback(callback_url, payload)
+
         except Exception as ex:
             logger.error("Background pipeline error for job_id=%s: %s", job_id_str, ex, exc_info=True)
             from audio_analyzer.services.job_service import sanitize_error_message
@@ -79,6 +102,18 @@ def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
             sanitized_msg = sanitize_error_message(ex)
             with get_uow() as uow:
                 uow.repository.update_status(record_uuid, JobStatus.FAILED, error_message=sanitized_msg)
+
+            if callback_url:
+                from audio_analyzer.services.webhook_service import WebhookService
+
+                webhook_svc = WebhookService()
+                payload = {
+                    "job_id": job_id_str,
+                    "file_name": file_name,
+                    "status": "FAILED",
+                    "error_message": sanitized_msg,
+                }
+                webhook_svc.send_callback(callback_url, payload)
 
     except Exception as ex:
         logger.error("Background task execution error: %s", ex, exc_info=True)
@@ -125,6 +160,7 @@ class UtteranceCreateRequest(BaseModel):
 async def upload_and_analyze_audio(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    callback_url: Optional[str] = Form(None),
     repository: ITranscriptRepository = Depends(get_repository),
     _api_key: Optional[str] = Depends(verify_api_key),
 ):
@@ -163,7 +199,7 @@ async def upload_and_analyze_audio(
 
     storage = get_storage_adapter()
     job_service = JobService(storage=storage, repository=repository)
-    job_id = job_service.create_job(file_name=file.filename, file_bytes=file_bytes)
+    job_id = job_service.create_job(file_name=file.filename, file_bytes=file_bytes, callback_url=callback_url)
 
     use_celery = os.getenv("USE_CELERY", "false").lower() == "true"
     if use_celery:
