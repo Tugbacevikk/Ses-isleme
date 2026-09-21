@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from audio_analyzer.adapters.storage.storage_factory import get_storage_adapter
 from audio_analyzer.api.dependencies import SessionLocal, get_repository, get_uow
 from audio_analyzer.domain.interfaces import ITranscriptRepository
-from audio_analyzer.domain.models import TranscriptUtterance
+from audio_analyzer.domain.models import JobStatus, TranscriptUtterance
 from audio_analyzer.services.job_service import JobService
 
 logger = logging.getLogger(__name__)
@@ -44,18 +44,42 @@ async def verify_api_key(api_key: Optional[str] = Depends(api_key_header)):
 def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
     """
     Arka plan asenkron worker fonksiyonu (Non-blocking HTTP 202 mimarisi).
-    Sıcak yüklenmiş (Warm-loaded) önbellekteki tekil yapay zeka pipeline nesnesini ve UnitOfWork kullanır.
+    DB kilitlerini engellemek için transaction'lar kısa süreli tutulur ve 
+    uzun süren AI modelleri açık transaction olmadan çalıştırılır.
     """
     try:
         storage = get_storage_adapter()
-        uow = get_uow()
-        with uow:
-            from audio_analyzer.services.pipeline_factory import get_shared_pipeline
+        record_uuid = uuid.UUID(job_id_str)
 
-            pipeline = get_shared_pipeline()
+        # 1. Durumu PROCESSING olarak güncelle ve transaction'ı hemen kapat
+        with get_uow() as uow:
+            record = uow.repository.get_record_by_id(record_uuid)
+            if not record:
+                return
+            uow.repository.update_status(record_uuid, JobStatus.PROCESSING)
+            storage_uri = record.storage_uri
 
-            job_service = JobService(storage=storage, repository=uow.repository, pipeline=pipeline)
-            job_service.execute_job(uuid.UUID(job_id_str))
+        # 2. Uzun süren AI Modellerini çalıştır (DB kilidi YOK)
+        from audio_analyzer.services.pipeline_factory import get_shared_pipeline
+
+        pipeline = get_shared_pipeline()
+        local_audio_path = storage.get_path(storage_uri)
+
+        try:
+            utterances, language = pipeline.process(local_audio_path)
+
+            # 3. Sonuçları kaydet (COMPLETED) ve transaction'ı kapat
+            with get_uow() as uow:
+                uow.repository.save_utterances(record_uuid, utterances, language=language)
+
+        except Exception as ex:
+            logger.error("Background pipeline error for job_id=%s: %s", job_id_str, ex, exc_info=True)
+            from audio_analyzer.services.job_service import sanitize_error_message
+
+            sanitized_msg = sanitize_error_message(ex)
+            with get_uow() as uow:
+                uow.repository.update_status(record_uuid, JobStatus.FAILED, error_message=sanitized_msg)
+
     except Exception as ex:
         logger.error("Background task execution error: %s", ex, exc_info=True)
 

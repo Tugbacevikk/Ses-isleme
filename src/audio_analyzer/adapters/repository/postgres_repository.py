@@ -8,6 +8,9 @@ from audio_analyzer.domain.interfaces import ITranscriptRepository
 from audio_analyzer.domain.models import AudioRecord, JobStatus, TranscriptUtterance
 
 
+import time
+from sqlalchemy.exc import OperationalError
+
 class PostgresRepository(ITranscriptRepository):
     """
     SQLAlchemy ile PostgreSQL / SQLite veritabanı adaptörü.
@@ -19,10 +22,19 @@ class PostgresRepository(ITranscriptRepository):
         self.autocommit = autocommit
 
     def _commit_or_flush(self):
-        if self.autocommit:
-            self.session.commit()
-        else:
-            self.session.flush()
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                if self.autocommit:
+                    self.session.commit()
+                else:
+                    self.session.flush()
+                break
+            except OperationalError as ex:
+                if "locked" in str(ex).lower() and attempt < max_retries - 1:
+                    time.sleep(0.2 * (attempt + 1))
+                else:
+                    raise
 
     def save_record(self, record: AudioRecord) -> AudioRecord:
         orm_model = AudioRecordModel(
