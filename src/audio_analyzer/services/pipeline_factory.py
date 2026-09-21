@@ -58,24 +58,10 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
                 f"STT Motoru (FasterWhisper) başlatılamadı: {e}. Lütfen model bağımlılıklarını kontrol edin."
             )
 
-    # 2. Diarization Engine (PyAnnote + SpeechBrain Fallback Chain)
-    hf_token = os.getenv("HF_TOKEN")
-    from audio_analyzer.adapters.diarization.fallback_diarizer import FallbackDiarizer
+    # 2. Diarization Engine (%100 Yerel ve İnternetsiz Token-Free Diarizasyon)
     from audio_analyzer.adapters.diarization.speechbrain_adapter import SpeechBrainECAPADiarizer
 
-    speechbrain_diarizer = SpeechBrainECAPADiarizer(device_config=device_config)
-
-    if hf_token:
-        try:
-            from audio_analyzer.adapters.diarization.pyannote_adapter import PyAnnoteAdapter
-
-            primary_pyannote = PyAnnoteAdapter(auth_token=hf_token, device_config=device_config)
-            diarizer = FallbackDiarizer(primary=primary_pyannote, fallback=speechbrain_diarizer)
-        except Exception as e:
-            logger.warning("PyAnnoteAdapter yüklenemedi: %s. Doğrudan SpeechBrain kullanılıyor.", e)
-            diarizer = speechbrain_diarizer
-    else:
-        diarizer = speechbrain_diarizer
+    diarizer = SpeechBrainECAPADiarizer(device_config=device_config)
 
     from audio_analyzer.adapters.audio.rust_dsp_adapter import RustAudioDSPProcessor
 
