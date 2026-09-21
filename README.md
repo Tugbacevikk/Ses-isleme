@@ -21,17 +21,13 @@ Yüksek performanslı, modüler, **Clean Architecture / Code-First** prensipleri
 - **Asenkron Job Queue**: Redis + Celery ve FastAPI BackgroundTasks ile non-blocking HTTP 202 istek işleme.
 - **Sıcak Yükleme (Warm-Loading)**: Singleton AI Pipeline ile hızlı ve düşük gecikmeli analiz.
 
-## HuggingFace & Diarization Yapılandırması
+## 🏢 Kurumsal Çevrimdışı (Air-Gapped / Token-Free) Yapılandırma
 
-PyAnnote 3.1 (1. Kademe) kullanmak için:
-1. [HuggingFace Tokens](https://huggingface.co/settings/tokens) adresinden `Read` izinli bir erişim anahtarı oluşturun.
-2. `.env` dosyanıza `HF_TOKEN=hf_...` olarak ekleyin.
-3. Aşağıdaki 3 model sayfasındaki kullanım şartlarını onaylayın:
-   - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
-   - [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
-   - [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
+Sistem, internete hiç çıkmadan ve **herhangi bir HuggingFace Token'ına ihtiyaç duymadan (Token-Free)** %100 yerel modda çalışır:
 
-> ℹ️ **Otomatik Kademeli Fallback Güvencesi**: `HF_TOKEN` girilmediğinde veya model erişim izni bulunmadığında sistem çökmez; otomatik olarak 2. Kademe (**SpeechBrain ECAPA-TDNN**) veya 3. Kademe (**Local Spectral Cluster**) motoruna geçerek analizi kesintisiz tamamlar.
+* **Çevrimdışı (Air-Gapped) Çalıştırma:** Modeller yerel `storage/models/` klasöründen okunur. Herhangi bir dış API veya HuggingFace token zorunluluğu yoktur.
+* **Token-Free Diarization:** 2. Kademe (**SpeechBrain ECAPA-TDNN**) ve 3. Kademe (**Local Spectral Cluster**) diyarizasyon motorları tamamen yerel matematiksel vektör hesaplaması yapar ve internet/token gerektirmez.
+* *(Opsiyonel)* Çevrimiçi HuggingFace PyAnnote 3.1 kullanmak isterseniz `.env` dosyasında `HF_TOKEN` girebilirsiniz. Girilmediğinde sistem otomatik olarak %100 yerel çevrimdışı motorla devam eder.
 
 ## Kurulum ve Başlatma
 
