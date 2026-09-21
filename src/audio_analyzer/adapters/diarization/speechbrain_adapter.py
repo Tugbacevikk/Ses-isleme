@@ -31,14 +31,25 @@ class SpeechBrainECAPADiarizer(IDiarizer):
     def _load_classifier(self):
         if self._classifier is None:
             import os
+            from pathlib import Path
 
             os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
             from speechbrain.inference.speaker import EncoderClassifier
 
-            self._classifier = EncoderClassifier.from_hparams(
-                source="speechbrain/spkrec-ecapa-voxceleb",
-                run_opts={"device": self.device_config.device},
-            )
+            spk_dir = Path(__file__).parent.parent.parent.parent / "storage" / "models" / "diarization" / "speechbrain_ecapa"
+            spk_dir.mkdir(parents=True, exist_ok=True)
+
+            try:
+                self._classifier = EncoderClassifier.from_hparams(
+                    source="speechbrain/spkrec-ecapa-voxceleb",
+                    savedir=str(spk_dir),
+                    run_opts={"device": self.device_config.device},
+                )
+            except Exception:
+                self._classifier = EncoderClassifier.from_hparams(
+                    source="speechbrain/spkrec-ecapa-voxceleb",
+                    run_opts={"device": self.device_config.device},
+                )
 
     def diarize(self, audio_path: str) -> List[DiarizationSegment]:
         try:
@@ -59,8 +70,8 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                 data = scipy.signal.resample(data, num_samples)
                 sr = target_sr
 
-            win_sec = 1.5
-            step_sec = 0.5
+            win_sec = 1.2
+            step_sec = 0.3
             win_samples = int(sr * win_sec)
             step_samples = int(sr * step_sec)
 
@@ -75,14 +86,14 @@ class SpeechBrainECAPADiarizer(IDiarizer):
             embeddings = []
             valid_indices = []
 
-            # Energy gating to skip silence
+            # Energy gating to skip absolute silence (5th percentile to keep quiet speech)
             rms_energies = np.array(
                 [
                     np.sqrt(np.mean(data[i * step_samples : i * step_samples + win_samples] ** 2))
                     for i in range(num_wins)
                 ]
             )
-            energy_thresh = max(1e-4, np.percentile(rms_energies, 20))
+            energy_thresh = max(1e-5, np.percentile(rms_energies, 5))
 
             for i in range(num_wins):
                 clip = data[i * step_samples : i * step_samples + win_samples]
@@ -114,8 +125,8 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                 n_spk = min(self.num_speakers, len(unit_embs))
                 raw_valid_labels = fcluster(Z, t=n_spk, criterion="maxclust") - 1
             else:
-                # Dynamic speaker estimation (distance threshold ~0.38 for meeting scalability)
-                raw_valid_labels = fcluster(Z, t=0.38, criterion="distance") - 1
+                # Dynamic speaker estimation (cosine distance threshold ~0.32)
+                raw_valid_labels = fcluster(Z, t=0.32, criterion="distance") - 1
                 n_clusters = len(np.unique(raw_valid_labels))
                 if n_clusters > self.max_speakers:
                     raw_valid_labels = fcluster(Z, t=self.max_speakers, criterion="maxclust") - 1

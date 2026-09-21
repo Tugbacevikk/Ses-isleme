@@ -12,23 +12,23 @@ def download_stt_model(model_size: str = "small"):
     """FasterWhisper modelini yerel depolama klasörüne indirir ve hazırlar."""
     stt_dir = MODEL_DIR / "stt" / model_size
     stt_dir.mkdir(parents=True, exist_ok=True)
-    print(f"📦 STT Modeli indiriliyor/kontrol ediliyor ({model_size}) -> {stt_dir}")
+    print(f"[STT] STT Modeli indiriliyor/kontrol ediliyor ({model_size}) -> {stt_dir}")
 
     try:
         from faster_whisper import WhisperModel
 
         # Modeli bir kez yerel klasöre indir
         model = WhisperModel(model_size, download_root=str(stt_dir), device="cpu", compute_type="int8")
-        print(f"✅ STT Modeli ({model_size}) yerel klasöre indirildi!")
+        print(f"[OK] STT Modeli ({model_size}) yerel klasöre indirildi!")
     except Exception as e:
-        print(f"❌ STT Model indirme hatası: {e}")
+        print(f"[ERROR] STT Model indirme hatası: {e}")
 
 
 def download_vad_model():
     """Silero VAD modelini yerel klasöre indirir ve önbelleğe alır."""
     vad_dir = MODEL_DIR / "vad"
     vad_dir.mkdir(parents=True, exist_ok=True)
-    print(f"📦 Silero VAD Modeli indiriliyor -> {vad_dir}")
+    print(f"[VAD] Silero VAD Modeli indiriliyor -> {vad_dir}")
 
     try:
         import torch
@@ -39,14 +39,35 @@ def download_vad_model():
             model="silero_vad",
             force_reload=False,
             onnx=False,
+            trust_repo=True,
         )
-        print("✅ Silero VAD Modeli yerel klasöre kaydedildi!")
+        print("[OK] Silero VAD Modeli yerel klasöre kaydedildi!")
     except Exception as e:
-        print(f"⚠️ Silero VAD indirme uyarısı: {e}")
+        print(f"[WARNING] Silero VAD indirme uyarısı: {e}")
+
+
+def download_diarization_model():
+    """SpeechBrain ECAPA-TDNN konuşmacı ayrıştırma modelini yerel depolama klasörüne indirir."""
+    spk_dir = MODEL_DIR / "diarization" / "speechbrain_ecapa"
+    spk_dir.mkdir(parents=True, exist_ok=True)
+    print(f"[MODEL] SpeechBrain ECAPA-TDNN Modeli indiriliyor -> {spk_dir}")
+
+    try:
+        from speechbrain.inference.speaker import EncoderClassifier
+
+        classifier = EncoderClassifier.from_hparams(
+            source="speechbrain/spkrec-ecapa-voxceleb",
+            savedir=str(spk_dir),
+            run_opts={"device": "cpu"},
+        )
+        print("[OK] SpeechBrain ECAPA-TDNN Modeli yerel klasöre kaydedildi!")
+    except Exception as e:
+        print(f"[ERROR] SpeechBrain indirme hatası: {e}")
 
 
 if __name__ == "__main__":
-    print("🚀 Çevrimdışı (Air-Gapped) Yapay Zeka Model İndirme Başlatılıyor...")
+    print("[START] Çevrimdışı Yapay Zeka Model İndirme Başlatılıyor...")
     download_stt_model("small")
     download_vad_model()
-    print("🎉 Çevrimdışı model paketleme tamamlandı!")
+    download_diarization_model()
+    print("[DONE] Çevrimdışı model paketleme tamamlandı!")
