@@ -353,19 +353,35 @@ def update_utterance_speaker(
 @router.delete("/jobs/{job_id}/utterances/{utterance_index}")
 def delete_utterance(
     job_id: str,
-    utterance_index: int,
+    utterance_index: str,
     repository: ITranscriptRepository = Depends(get_repository),
     _api_key: Optional[str] = Depends(verify_api_key),
 ):
     """
-    Kullanıcının Arayüzden (UI) seçtiği konuşmacı kartını/kutusunu silmesini sağlar.
+    Kullanıcının Arayüzden (UI) seçtiği konuşmacı kartını/kutusunu silmesini sağlar (UUID veya İndeks ile).
     """
     try:
         record_uuid = uuid.UUID(job_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    success = repository.delete_utterance(record_id=record_uuid, utterance_index=utterance_index)
+    success = False
+    # Önce UUID olarak silmeyi dene
+    try:
+        utt_uuid = uuid.UUID(utterance_index)
+        if hasattr(repository, "delete_utterance_by_id"):
+            success = repository.delete_utterance_by_id(record_uuid, utt_uuid)
+    except ValueError:
+        pass
+
+    # UUID değilse veya bulunamadıysa tamsayı indeksi olarak sil
+    if not success:
+        try:
+            idx = int(utterance_index)
+            success = repository.delete_utterance(record_id=record_uuid, utterance_index=idx)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Geçersiz indeks veya UUID formatı.")
+
     if not success:
         raise HTTPException(status_code=404, detail="Silinecek cümle bulunamadı.")
 

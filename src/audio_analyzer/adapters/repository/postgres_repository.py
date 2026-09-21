@@ -118,7 +118,11 @@ class PostgresRepository(ITranscriptRepository):
         orm_utterances = (
             self.session.query(TranscriptUtteranceModel)
             .filter(TranscriptUtteranceModel.audio_record_id == record_id)
-            .order_by(TranscriptUtteranceModel.start_time.asc())
+            .order_by(
+                TranscriptUtteranceModel.start_time.asc(),
+                TranscriptUtteranceModel.created_at.asc(),
+                TranscriptUtteranceModel.id.asc(),
+            )
             .all()
         )
         if not orm_utterances or utterance_index < 0 or utterance_index >= len(orm_utterances):
@@ -133,13 +137,33 @@ class PostgresRepository(ITranscriptRepository):
         orm_utterances = (
             self.session.query(TranscriptUtteranceModel)
             .filter(TranscriptUtteranceModel.audio_record_id == record_id)
-            .order_by(TranscriptUtteranceModel.start_time.asc())
+            .order_by(
+                TranscriptUtteranceModel.start_time.asc(),
+                TranscriptUtteranceModel.created_at.asc(),
+                TranscriptUtteranceModel.id.asc(),
+            )
             .all()
         )
         if not orm_utterances or utterance_index < 0 or utterance_index >= len(orm_utterances):
             return False
 
         self.session.delete(orm_utterances[utterance_index])
+        self._commit_or_flush()
+        return True
+
+    def delete_utterance_by_id(self, record_id: uuid.UUID, utterance_id: uuid.UUID) -> bool:
+        orm_model = (
+            self.session.query(TranscriptUtteranceModel)
+            .filter(
+                TranscriptUtteranceModel.audio_record_id == record_id,
+                TranscriptUtteranceModel.id == utterance_id,
+            )
+            .first()
+        )
+        if not orm_model:
+            return False
+
+        self.session.delete(orm_model)
         self._commit_or_flush()
         return True
 
@@ -184,6 +208,11 @@ class PostgresRepository(ITranscriptRepository):
         return True
 
     def _to_domain(self, orm: AudioRecordModel) -> AudioRecord:
+        from datetime import datetime
+        sorted_utterances = sorted(
+            orm.utterances,
+            key=lambda u: (u.start_time, u.created_at or datetime.min, str(u.id)),
+        )
         domain_utterances = [
             TranscriptUtterance(
                 id=u.id,
@@ -193,7 +222,7 @@ class PostgresRepository(ITranscriptRepository):
                 text=u.text,
                 created_at=u.created_at,
             )
-            for u in orm.utterances
+            for u in sorted_utterances
         ]
         return AudioRecord(
             id=orm.id,
