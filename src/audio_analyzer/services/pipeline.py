@@ -61,15 +61,19 @@ class AudioAnalysisPipeline:
                 except Exception as e:
                     logger.warning("VAD İşleme Hatası: %s. VAD filtresi atlanıyor.", e)
 
-            # 3. STT ile kelime seviyesi metin çıkarma ve dil tespiti
-            words, detected_language = self.stt_engine.transcribe(working_path)
+            # 3 & 4. STT (Whisper Metne Çevirme) ve Diarization (Konuşmacı Ayrıştırma) Motorlarını PARALEL (Eşzamanlı) Çalıştır
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                future_stt = executor.submit(self.stt_engine.transcribe, working_path)
+                future_diar = executor.submit(self.diarizer.diarize, working_path)
+
+                words, detected_language = future_stt.result()
+                diarization_segments = future_diar.result()
 
             # 3b. VAD Filtrelemesi: Sessizlik alanlarında türetilen STT halüsinasyonlarını temizle
             if speech_timestamps and words:
                 words = self._filter_words_with_vad(words, speech_timestamps)
-
-            # 4. Derin konuşmacı zaman aralıkları çıkarma
-            diarization_segments = self.diarizer.diarize(working_path)
 
             # 5. FusionEngine ile hizalama
             raw_utterances = self.fusion_engine.align(words, diarization_segments)
