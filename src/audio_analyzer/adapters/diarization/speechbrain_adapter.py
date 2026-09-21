@@ -33,20 +33,21 @@ class SpeechBrainECAPADiarizer(IDiarizer):
             import os
             os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
             from speechbrain.inference.speaker import EncoderClassifier
+            from pathlib import Path
+
+            spk_dir = Path(__file__).parent.parent.parent.parent / "storage" / "models" / "diarization" / "speechbrain_ecapa"
+            spk_dir.mkdir(parents=True, exist_ok=True)
 
             try:
                 self._classifier = EncoderClassifier.from_hparams(
                     source="speechbrain/spkrec-ecapa-voxceleb",
+                    savedir=str(spk_dir),
                     run_opts={"device": self.device_config.device},
                 )
             except Exception as ex:
-                logger.warning("Standard SpeechBrain load note (%s), attempting savedir...", ex)
-                from pathlib import Path
-                spk_dir = Path(__file__).parent.parent.parent.parent / "storage" / "models" / "diarization" / "speechbrain_ecapa"
-                spk_dir.mkdir(parents=True, exist_ok=True)
+                logger.warning("SpeechBrain loading note (%s), retrying without explicit savedir...", ex)
                 self._classifier = EncoderClassifier.from_hparams(
                     source="speechbrain/spkrec-ecapa-voxceleb",
-                    savedir=str(spk_dir),
                     run_opts={"device": self.device_config.device},
                 )
 
