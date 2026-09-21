@@ -95,8 +95,6 @@ class AudioRecord(BaseModel):
     language: Optional[str] = None
     status: JobStatus = JobStatus.PENDING
     error_message: Optional[str] = None
-    callback_url: Optional[str] = None
-    webhook_status: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     utterances: List[TranscriptUtterance] = Field(default_factory=list)

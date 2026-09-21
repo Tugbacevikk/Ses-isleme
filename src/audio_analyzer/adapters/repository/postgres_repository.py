@@ -47,8 +47,6 @@ class PostgresRepository(ITranscriptRepository):
             language=record.language,
             status=record.status.value,
             error_message=record.error_message,
-            callback_url=record.callback_url,
-            webhook_status=record.webhook_status,
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
@@ -236,8 +234,6 @@ class PostgresRepository(ITranscriptRepository):
             language=orm.language,
             status=JobStatus(orm.status),
             error_message=orm.error_message,
-            callback_url=getattr(orm, "callback_url", None),
-            webhook_status=getattr(orm, "webhook_status", None),
             created_at=orm.created_at,
             updated_at=orm.updated_at,
             utterances=domain_utterances,
