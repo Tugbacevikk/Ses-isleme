@@ -48,21 +48,18 @@ def download_vad_model():
 
 def download_diarization_model():
     """SpeechBrain ECAPA-TDNN konuşmacı ayrıştırma modelini yerel depolama klasörüne indirir."""
-    spk_dir = MODEL_DIR / "diarization" / "speechbrain_ecapa"
-    spk_dir.mkdir(parents=True, exist_ok=True)
-    print(f"[MODEL] SpeechBrain ECAPA-TDNN Modeli indiriliyor -> {spk_dir}")
+    print("[MODEL] SpeechBrain ECAPA-TDNN Modeli indiriliyor/kontrol ediliyor...")
 
     try:
         from speechbrain.inference.speaker import EncoderClassifier
 
         classifier = EncoderClassifier.from_hparams(
             source="speechbrain/spkrec-ecapa-voxceleb",
-            savedir=str(spk_dir),
             run_opts={"device": "cpu"},
         )
-        print("[OK] SpeechBrain ECAPA-TDNN Modeli yerel klasöre kaydedildi!")
+        print("[OK] SpeechBrain ECAPA-TDNN Modeli yerel önbelleğe kaydedildi!")
     except Exception as e:
-        print(f"[ERROR] SpeechBrain indirme hatası: {e}")
+        print(f"[WARNING] Standard SpeechBrain indirme uyarısı: {e}")
 
 
 if __name__ == "__main__":
