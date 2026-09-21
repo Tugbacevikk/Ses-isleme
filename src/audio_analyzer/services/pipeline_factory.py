@@ -10,7 +10,11 @@ from audio_analyzer.services.fusion_engine import FusionEngine
 from audio_analyzer.services.pipeline import AudioAnalysisPipeline
 from audio_analyzer.services.semantic_refiner import SemanticRefiner
 
+from dotenv import load_dotenv
+
 logger = logging.getLogger(__name__)
+
+load_dotenv()
 
 _cached_pipeline: Optional[AudioAnalysisPipeline] = None
 
@@ -28,8 +32,8 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
 
     device_config = DeviceConfig()
 
-    # Ortam değişkenlerinden blueprint parametrelerini oku
-    whisper_model_size = os.getenv("WHISPER_MODEL_SIZE", "medium")
+    # Ortam değişkenlerinden blueprint parametrelerini oku (Hızlı ve dengeli analiz için 'small')
+    whisper_model_size = os.getenv("WHISPER_MODEL_SIZE", "small")
     max_silence_threshold = float(os.getenv("MAX_SILENCE_THRESHOLD", "1.5"))
 
     # 1. STT Engine (FasterWhisper)

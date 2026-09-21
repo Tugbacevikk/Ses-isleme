@@ -4,6 +4,8 @@ from audio_analyzer.domain.interfaces import ISTTEngine
 from audio_analyzer.domain.models import DeviceConfig, WordSegment
 
 
+import os
+
 class FasterWhisperAdapter(ISTTEngine):
     """
     Faster-Whisper (CTranslate2) Speech-to-Text Motor Adaptörü.
@@ -30,11 +32,13 @@ class FasterWhisperAdapter(ISTTEngine):
             try:
                 from faster_whisper import WhisperModel
 
+                cpu_threads = int(os.getenv("WHISPER_CPU_THREADS", "4"))
                 self._model = WhisperModel(
                     self.model_size,
                     device=self.device_config.device,
                     compute_type=self.device_config.compute_type,
                     device_index=self.device_config.device_index,
+                    cpu_threads=cpu_threads,
                 )
             except ImportError:
                 raise ImportError(
@@ -43,6 +47,7 @@ class FasterWhisperAdapter(ISTTEngine):
 
     def transcribe(self, audio_path: str) -> Tuple[List[WordSegment], Optional[str]]:
         self._lazy_load_model()
+        beam_size = int(os.getenv("WHISPER_BEAM_SIZE", "2"))
 
         try:
             segments, info = self._model.transcribe(
@@ -50,7 +55,7 @@ class FasterWhisperAdapter(ISTTEngine):
                 language="tr",
                 initial_prompt=self.initial_prompt,
                 word_timestamps=True,
-                beam_size=5,
+                beam_size=beam_size,
                 vad_filter=True,
             )
         except Exception:
@@ -59,7 +64,7 @@ class FasterWhisperAdapter(ISTTEngine):
                 language="tr",
                 initial_prompt=self.initial_prompt,
                 word_timestamps=True,
-                beam_size=5,
+                beam_size=beam_size,
                 vad_filter=False,
             )
 
