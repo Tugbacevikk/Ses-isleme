@@ -88,7 +88,7 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                 ]
 
             num_wins = 1 + (len(data) - win_samples) // step_samples
-            embeddings = []
+            valid_clips = []
             valid_indices = []
 
             # Energy gating to skip absolute silence (5th percentile to keep quiet speech)
@@ -104,22 +104,32 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                 clip = data[i * step_samples : i * step_samples + win_samples]
                 if rms_energies[i] < energy_thresh:
                     continue
-                tensor_clip = torch.tensor(clip, dtype=torch.float32).unsqueeze(0)
+                valid_clips.append(clip)
+                valid_indices.append(i)
 
-                with torch.no_grad():
-                    emb = self._classifier.encode_batch(tensor_clip)
-                    emb_vec = emb.squeeze().cpu().numpy()
-                    embeddings.append(emb_vec)
-                    valid_indices.append(i)
-
-            if not embeddings:
+            if not valid_clips:
                 return [
                     DiarizationSegment(
                         speaker_id="SPEAKER_00", start_time=0.0, end_time=len(data) / sr
                     )
                 ]
 
-            embeddings = np.array(embeddings)
+            # Dynamic Batching for SpeechBrain Embedding Extraction
+            batch_size = int(os.getenv("DIARIZATION_BATCH_SIZE", "32"))
+            raw_embeddings = []
+            for b_idx in range(0, len(valid_clips), batch_size):
+                b_chunk = valid_clips[b_idx : b_idx + batch_size]
+                batch_arr = np.array(b_chunk, dtype=np.float32)
+                tensor_batch = torch.tensor(batch_arr, dtype=torch.float32)
+
+                with torch.no_grad():
+                    emb = self._classifier.encode_batch(tensor_batch)
+                    emb_np = emb.squeeze(1).cpu().numpy()
+                    if emb_np.ndim == 1:
+                        emb_np = np.expand_dims(emb_np, axis=0)
+                    raw_embeddings.append(emb_np)
+
+            embeddings = np.vstack(raw_embeddings)
             norms = np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8
             unit_embs = embeddings / norms
 

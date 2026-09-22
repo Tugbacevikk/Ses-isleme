@@ -48,10 +48,14 @@ class FasterWhisperAdapter(ISTTEngine):
     def transcribe(self, audio_path: str) -> Tuple[List[WordSegment], Optional[str]]:
         self._lazy_load_model()
         beam_size = int(os.getenv("WHISPER_BEAM_SIZE", "2"))
+        batch_size = int(os.getenv("WHISPER_BATCH_SIZE", "16"))
 
         try:
-            segments, info = self._model.transcribe(
+            from faster_whisper import BatchedInferencePipeline
+            batched_model = BatchedInferencePipeline(model=self._model)
+            segments, info = batched_model.transcribe(
                 audio_path,
+                batch_size=batch_size,
                 language="tr",
                 initial_prompt=self.initial_prompt,
                 word_timestamps=True,
@@ -62,7 +66,7 @@ class FasterWhisperAdapter(ISTTEngine):
                 no_speech_threshold=0.6,
                 vad_filter=True,
             )
-        except Exception:
+        except Exception as e:
             segments, info = self._model.transcribe(
                 audio_path,
                 language="tr",
