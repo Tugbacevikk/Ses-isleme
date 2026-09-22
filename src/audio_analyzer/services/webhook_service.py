@@ -17,7 +17,11 @@ class WebhookService:
     """
 
     def __init__(self, secret_key: Optional[str] = None):
-        self.secret_key = secret_key or "default_antigravity_secret_key"
+        import os
+
+        self.secret_key = secret_key or os.getenv(
+            "WEBHOOK_SECRET", "default_antigravity_secret_key"
+        )
 
     def generate_signature(self, payload_bytes: bytes) -> str:
         """Payload veri bütünlüğünü garanti etmek için HMAC-SHA256 imzası üretir."""
