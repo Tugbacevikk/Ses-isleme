@@ -57,6 +57,7 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=audio_db
+      - POSTGRES_HOST_AUTH_METHOD=trust
     ports:
       - "5432:5432"
     volumes:
@@ -66,6 +67,29 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # 3b. PgBouncer (PostgreSQL Bağlantı Havuzlayıcı - Connection Pooler)
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: audio_analyzer_pgbouncer
+    restart: always
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=audio_db
+      - AUTH_TYPE=md5
+      - POOL_MODE=transaction
+      - MAX_CLIENT_CONN=1000
+      - DEFAULT_POOL_SIZE=20
+      - MIN_POOL_SIZE=5
+      - LISTEN_PORT=6432
+    ports:
+      - "6432:6432"
+    depends_on:
+      db:
+        condition: service_healthy
 
   # 4. Redis Mesaj Brokerı & Önbellek
   redis:
