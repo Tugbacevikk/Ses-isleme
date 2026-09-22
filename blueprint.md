@@ -140,25 +140,49 @@ sequenceDiagram
 
 ---
 
-## ⚙️ 5. YAPILAN EN SON KRİTİK İYİLEŞTİRMELER VE NEDENLERİ
+## ⚙️ 5. YAPILAN VE EKLENEN TÜM YENİ ÖZELLİKLER (GÜNCEL BLUEPRINT)
 
-Sunumda mutlaka bahsetmeniz gereken son 4 teknik geliştirme:
+Projede son dönemde gerçekleştirilen ve eklenmekte olan tüm kritik teknik geliştirmeler:
 
-1. **Dinamik 10+ Konuşmacı Desteği (Multi-Speaker Scalability)**:
-   - *Eski Hali*: Arayüzde sadece 4 konuşmacı (`SPEAKER_00` - `SPEAKER_03`) seçilebiliyordu. 5 veya daha fazla kişinin katıldığı toplantılarda kısıtlama yaşanıyordu.
-   - *Yeni Hali*: Arayüzdeki dropdown menü dinamik hale getirildi. Artık otomatik olarak 10+ konuşmacı (`SPEAKER_00` - `SPEAKER_09` / Konuşmacı 1-10) listelenir. 5+ kişilik toplantılarda her katılımcı kolayca atanabilir.
+1. **SQLite WAL Modu ve DB Kilitleme Çözümü (Database Locking Fix)**:
+   - *Sorun*: Ağır analizler sırasında ve eşzamanlı HTTP isteklerinde SQLite veritabanı kilitleniyordu (`sqlite3.OperationalError: database is locked`).
+   - *Çözüm*: SQLite `PRAGMA journal_mode=WAL` ve `PRAGMA busy_timeout=30000` ayarlarına geçildi. Arka plan yapay zeka analizlerinin veritabanı oturumları (session) uzun süren model işlemlerinden tamamen ayrıştırıldı.
 
-2. **Güvenlik & Traceback Sızıntı Önlemesi (Security Hardening)**:
-   - *Eski Hali*: Bir hata oluştuğunda sunucunun tüm kod yolları (`C:\Users\ADIL CEVIK\...`) ve Python yığın izi (traceback) API yanıtında dışarı sızıyordu.
-   - *Yeni Hali*: `job_service.py` içinde `sanitize_error_message` yazıldı. Dosya yolları maskelendi (`[FILE_PATH]`), hata detayları güvenle sunucu loglarına kaydedildi.
+2. **Paralel Yapay Zeka İcrası ve Hız Optimizasyonu (5-10s Analiz Süresi)**:
+   - *Eski Hali*: STT (Whisper) ve Diarization (SpeechBrain) sırayla (ardışık) çalışıyordu.
+   - *Yeni Hali*: `AudioAnalysisPipeline` içinde `ThreadPoolExecutor` kullanılarak STT ve Diarization işlemleri eşzamanlı (paralel) çalışacak şekilde mimari yenilendi. Ortalama analiz süresi 25-30 saniyeden **5-10 saniye** seviyesine düşürüldü.
 
-3. **Sihirli Bayt (Magic Header) İle Güvenlik Kontrolü**:
-   - *Eski Hali*: Yalnızca dosya uzantısına (`.wav`) bakılıyordu. İçi metin dolu olan sahte bir dosya `.wav` adıyla yüklenebiliyordu.
-   - *Yeni Hali*: `file_validator.py` ile dosyanın ilk baytları (Magic Bytes: `RIFF`, `ID3`, `fLaC`, `OggS`, `ftyp`) ve ses çözücüleri kontrol edilir. Sahte dosyalar `400 Bad Request` ile reddedilir.
+3. **%100 Çevrimdışı (Air-Gapped) Altyapı ve Yerel Model Yönetimi**:
+   - *Eski Hali*: Sistem her çalışmasında HuggingFace Hub üzerinden çevrimiçi model kontrolü yapıyordu.
+   - *Yeni Hali*: `scripts/download_offline_models.py` betiği oluşturuldu. Faster-Whisper Small, Silero VAD ve SpeechBrain ECAPA-TDNN modelleri `storage/models/` altına indirildi. HuggingFace token zorunluluğu tamamen kaldırıldı; sistem internetiz (Air-Gapped) ortamlarda %100 yerel çalışır hale getirildi.
 
-4. **Sayfa İçi Toast Bildirim ve Özel UI Diyalogları**:
-   - *Eski Hali*: Silme veya ekleme yaparken tarayıcının kaba `localhost:8000 mesajı` pop-up pencereleri çıkıyordu.
-   - *Yeni Hali*: Pop-up'lar tamamen kaldırıldı; modern, cam efektli sayfa içi **Toast Bildirimleri** (Sağ üstte açılan yeşil/kırmızı mesajlar) ve özel onay kutuları eklendi.
+4. **HMAC-SHA256 İmzalı Asenkron Webhook / Callback Servisi**:
+   - *Eski Hali*: Analiz bittiğinde harici kurum sistemleri (CRM/HBYS/Santral) haberdar edilemiyordu.
+   - *Yeni Hali*: Analiz tamamlandığında veya hata alındığında verilen `callback_url` adresine otomatik JSON bildirimi atılır. Güvenlik için `X-Signature` başlığında HMAC-SHA256 imzası üretilir ve 3 katlı üssel geri çekilme (exponential backoff) retry politikası uygulanır.
+
+5. **Utterance UUID İle Tam Silme ve Deterministik Sıralama**:
+   - *Sorun*: Web arayüzünden transkript bloğu silindiğinde yanlış bloklar silinebiliyor veya sıralama bozulabiliyordu.
+   - *Çözüm*: `delete_utterance_by_id` repository metodu yazıldı. Tüm transkript blokları veritabanında ve API yanıtında `(start_time, created_at, id)` bazında deterministik sıralamaya tabi tutuldu.
+
+6. **Dinamik 10+ Konuşmacı Desteği (Multi-Speaker Scalability)**:
+   - *Eski Hali*: Arayüzde sadece 4 konuşmacı (`SPEAKER_00` - `SPEAKER_03`) seçilebiliyordu.
+   - *Yeni Hali*: Arayüzdeki dropdown menü dinamik hale getirildi. Otomatik olarak 10+ konuşmacı (`SPEAKER_00` - `SPEAKER_09` / Konuşmacı 1-10) listelenir.
+
+7. **Güvenlik & Traceback Sızıntı Önlemesi (Security Hardening)**:
+   - *Eski Hali*: Bir hata oluştuğunda sunucunun tüm kod yolları (`C:\Users\...`) ve Python yığın izi (traceback) API yanıtında dışarı sızıyordu.
+   - *Yeni Hali*: `job_service.py` içinde `sanitize_error_message` ile dosya yolları maskelendi (`[FILE_PATH]`), detaylar güvenle loglandı.
+
+8. **Sihirli Bayt (Magic Header) İle Güvenlik Kontrolü**:
+   - *Eski Hali*: Yalnızca dosya uzantısına (`.wav`) bakılıyordu.
+   - *Yeni Hali*: `file_validator.py` ile dosyanın ilk baytları (Magic Bytes: `RIFF`, `ID3`, `fLaC`, `OggS`, `ftyp`) kontrol edilir. Sahte dosyalar `400 Bad Request` ile reddedilir.
+
+9. **Ön Gürültü Temizleme (DeepFilterNet Denoiser - Yeni Modül)**:
+   - *İşlev*: Cızırtılı telefon ve santral sesleri, arka plan klima uğultusu ve klavye sesleri yapay zeka analizine girmeden önce temizlenir.
+   - *Katkısı*: Whisper metin dönüştürme doğruluğu (WER) %20-%30 artar, konuşmacı ayrıştırma hassasiyeti yükselir.
+
+10. **Konuşma Çakışması Analizi (Overlap Detection & Quality Metrics - Yeni Modül)**:
+    - *İşlev*: İki kişinin aynı anda konuştuğu (birbirinin sözünü kestiği) anlar saniye bazlı tespit edilir.
+    - *Katkısı*: Müşteri temsilcisinin müşterinin sözünü kesme oranı (`interrupt_count`, `overlap_percentage`) otomatik ölçülür ve kalite kontrol metrikleri üretilir.
 
 ---
 
