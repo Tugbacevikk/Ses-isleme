@@ -84,3 +84,28 @@ def create_synthetic_wav(file_path: str, duration_sec: float = 3.0, freq: float 
             wav_file.writeframesraw(data)
 
     return str(path.absolute())
+
+
+def create_synthetic_wav_bytes(duration_sec: float = 3.0, freq: float = 440.0) -> bytes:
+    """
+    Testler ve RAM akışı için 16kHz Mono 16-bit sinüs dalgalı sentetik WAV baytları üretir.
+    """
+    import io
+
+    sample_rate = 16000
+    num_samples = int(sample_rate * duration_sec)
+    buffer = io.BytesIO()
+
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+
+        for i in range(num_samples):
+            t = float(i) / sample_rate
+            sample = int(32767.0 * 0.3 * math.sin(2.0 * math.pi * freq * t))
+            data = struct.pack("<h", sample)
+            wav_file.writeframesraw(data)
+
+    return buffer.getvalue()
+

@@ -94,18 +94,21 @@ class PostgresRepository(ITranscriptRepository):
         if not orm_model:
             return False
 
-        # Cümleleri ekle
-        for u in utterances:
-            u_model = TranscriptUtteranceModel(
-                id=u.id,
-                audio_record_id=record_id,
-                speaker_id=u.speaker_id,
-                start_time=u.start_time,
-                end_time=u.end_time,
-                text=u.text,
-                created_at=u.created_at,
-            )
-            self.session.add(u_model)
+        # Toplu Cümle Kaydı (Bulk Insert Optimization)
+        if utterances:
+            u_models = [
+                TranscriptUtteranceModel(
+                    id=u.id,
+                    audio_record_id=record_id,
+                    speaker_id=u.speaker_id,
+                    start_time=u.start_time,
+                    end_time=u.end_time,
+                    text=u.text,
+                    created_at=u.created_at,
+                )
+                for u in utterances
+            ]
+            self.session.add_all(u_models)
 
         orm_model.status = JobStatus.COMPLETED.value
         if language:

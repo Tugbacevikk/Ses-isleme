@@ -1,5 +1,5 @@
 import logging
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import numpy as np
 import soundfile as sf
@@ -40,13 +40,17 @@ class SileroVADProcessor(IVADProcessor):
                 self._model = "ENERGY_FALLBACK"
 
     def get_speech_timestamps(
-        self, audio_path: str, min_silence_duration_ms: int = 400
+        self, audio_input: Union[str, np.ndarray], min_silence_duration_ms: int = 400
     ) -> List[Tuple[float, float]]:
         """
-        Ses dosyasını analiz eder ve konfigüre edilebilir minimum sessizlik süresine göre
-        konuşma bloklarının başlama ve bitme zamanlarını döner (saniye).
+        Ses verisini (dosya yolu veya RAM tamponu) analiz eder ve konuşma aralıklarını döner.
         """
-        data, sr = sf.read(audio_path)
+        if isinstance(audio_input, np.ndarray):
+            data = audio_input
+            sr = 16000
+        else:
+            data, sr = sf.read(audio_input)
+
         if data.ndim > 1:
             data = np.mean(data, axis=1)
 

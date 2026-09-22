@@ -1,5 +1,6 @@
 import logging
-from typing import List, Optional
+import os
+from typing import List, Optional, Union
 
 import numpy as np
 import torch
@@ -51,7 +52,7 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                     run_opts={"device": self.device_config.device},
                 )
 
-    def diarize(self, audio_path: str) -> List[DiarizationSegment]:
+    def diarize(self, audio_input: Union[str, np.ndarray]) -> List[DiarizationSegment]:
         try:
             self._load_classifier()
             import scipy.signal
@@ -60,7 +61,11 @@ class SpeechBrainECAPADiarizer(IDiarizer):
             from scipy.signal import medfilt
             from scipy.spatial.distance import pdist
 
-            data, sr = sf.read(audio_path)
+            if isinstance(audio_input, np.ndarray):
+                data = audio_input
+                sr = 16000
+            else:
+                data, sr = sf.read(audio_input)
             if data.ndim > 1:
                 data = np.mean(data, axis=1)
 
@@ -201,6 +206,18 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                 LocalSpectralClusterDiarizer,
             )
 
-            return LocalSpectralClusterDiarizer(device_config=self.device_config).diarize(
-                audio_path
-            )
+            fallback_diarizer = LocalSpectralClusterDiarizer(device_config=self.device_config)
+            if isinstance(audio_input, str):
+                return fallback_diarizer.diarize(audio_input)
+            else:
+                # If audio_input is array, create temporary audio file for spectral fallback
+                import soundfile as sf
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                    tmp_path = tmp.name
+                sf.write(tmp_path, audio_input, 16000, subtype="PCM_16")
+                try:
+                    return fallback_diarizer.diarize(tmp_path)
+                finally:
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)

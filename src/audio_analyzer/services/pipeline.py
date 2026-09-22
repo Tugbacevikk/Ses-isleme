@@ -117,6 +117,73 @@ class AudioAnalysisPipeline:
                     except Exception as cleanup_err:
                         logger.warning("Geçici ses dosyası temizleme uyarısı: %s", cleanup_err)
 
+    def process_bytes(
+        self, file_bytes: bytes
+    ) -> Tuple[List[TranscriptUtterance], Optional[str], OverlapSummary]:
+        """
+        0-Disk I/O: Ses dosyasını doğrudan RAM bellek (In-Memory Stream Buffer) üzerinden işler.
+        Diske 0 bayt geçici ses dosyası yazılır.
+        """
+        import io
+        import numpy as np
+
+        # 1. Ses Baytlarını RAM'de 16kHz Mono float32 NumPy dizisine çevir
+        if self.audio_processor and hasattr(self.audio_processor, "convert_bytes_to_ndarray"):
+            audio_array, _ = self.audio_processor.convert_bytes_to_ndarray(
+                file_bytes, target_sample_rate=16000
+            )
+        else:
+            import soundfile as sf
+
+            audio_array, sr = sf.read(io.BytesIO(file_bytes))
+            if audio_array.ndim > 1:
+                audio_array = np.mean(audio_array, axis=1)
+
+        # 2. Ön Gürültü Temizleme (RAM Üzerinde Denoise)
+        if self.denoiser and hasattr(self.denoiser, "denoise_array"):
+            audio_array = self.denoiser.denoise_array(audio_array, sample_rate=16000)
+
+        # 3. VAD ile konuşma aralıkları (RAM Üzerinde)
+        speech_timestamps: Optional[List[Tuple[float, float]]] = None
+        if self.vad_processor:
+            try:
+                speech_timestamps = self.vad_processor.get_speech_timestamps(audio_array)
+            except Exception as e:
+                logger.warning("VAD In-Memory İşleme Hatası: %s. VAD filtresi atlanıyor.", e)
+
+        # 4 & 5. STT ve Diarization Motorlarını PARALEL (RAM tamponundan) Çalıştır
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            future_stt = executor.submit(self.stt_engine.transcribe, audio_array)
+            future_diar = executor.submit(self.diarizer.diarize, audio_array)
+
+            words, detected_language = future_stt.result()
+            diarization_segments = future_diar.result()
+
+        # 4b. VAD Filtrelemesi
+        if speech_timestamps and words:
+            words = self._filter_words_with_vad(words, speech_timestamps)
+
+        # 6. Konuşma Çakışması Metrikleri
+        total_duration = 0.0
+        if words:
+            total_duration = max(w.end_time for w in words)
+        elif diarization_segments:
+            total_duration = max(s.end_time for s in diarization_segments)
+
+        overlap_summary = OverlapDetector.detect_overlaps(
+            diarization_segments=diarization_segments, total_audio_duration=total_duration
+        )
+
+        # 7. FusionEngine
+        raw_utterances = self.fusion_engine.align(words, diarization_segments)
+
+        # 8. SemanticRefiner
+        final_utterances = self.semantic_refiner.refine(raw_utterances)
+
+        return final_utterances, detected_language, overlap_summary
+
     def _filter_words_with_vad(
         self, words: List, speech_timestamps: List[Tuple[float, float]], tolerance: float = 0.3
     ) -> List:

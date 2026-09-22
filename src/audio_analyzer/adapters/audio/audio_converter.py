@@ -2,7 +2,9 @@ import os
 import subprocess
 import wave
 from pathlib import Path
+from typing import Tuple
 
+import numpy as np
 from audio_analyzer.domain.interfaces import IAudioProcessor
 
 
@@ -106,3 +108,53 @@ class AudioConverterProcessor(IAudioProcessor):
             wav_file.writeframes(all_pcm_bytes)
 
         return str(output_p)
+
+    def convert_bytes_to_ndarray(
+        self, file_bytes: bytes, target_sample_rate: int = 16000
+    ) -> Tuple[np.ndarray, int]:
+        """RAM üzerindeki ses baytlarını (0 Disk I/O) 16kHz float32 Mono NumPy dizisine dönüştürür."""
+        import io
+        import numpy as np
+        import scipy.signal
+        import soundfile as sf
+
+        try:
+            data, sr = sf.read(io.BytesIO(file_bytes))
+            if data.ndim > 1:
+                data = np.mean(data, axis=1)
+
+            if sr != target_sample_rate:
+                num_samples = int(len(data) * target_sample_rate / sr)
+                data = scipy.signal.resample(data, num_samples)
+                sr = target_sample_rate
+
+            return data.astype(np.float32), sr
+        except Exception as ex:
+            return self._convert_bytes_with_pyav(file_bytes, target_sample_rate)
+
+    def _convert_bytes_with_pyav(self, file_bytes: bytes, target_sample_rate: int) -> Tuple[np.ndarray, int]:
+        import av
+        import io
+        import numpy as np
+
+        container = av.open(io.BytesIO(file_bytes))
+        audio_stream = next(s for s in container.streams if s.type == "audio")
+
+        resampler = av.AudioResampler(format="flt", layout="mono", rate=target_sample_rate)
+        samples_list = []
+
+        for frame in container.decode(audio_stream):
+            resampled_frames = resampler.resample(frame)
+            for r_frame in resampled_frames:
+                samples_list.append(r_frame.to_ndarray().flatten())
+
+        for r_frame in resampler.resample(None):
+            samples_list.append(r_frame.to_ndarray().flatten())
+
+        if samples_list:
+            full_data = np.concatenate(samples_list)
+        else:
+            full_data = np.array([], dtype=np.float32)
+
+        return full_data, target_sample_rate
+

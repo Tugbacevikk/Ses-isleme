@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 from audio_analyzer.domain.interfaces import IAudioDenoiser
 
 logger = logging.getLogger(__name__)
@@ -56,3 +57,25 @@ class DeepFilterDenoiser(IAudioDenoiser):
         except Exception as ex:
             logger.error("Denoise işlemi sırasında hata oluştu (%s). Ham ses kullanılıyor.", ex)
             return input_path
+
+    def denoise_array(self, audio_data: np.ndarray, sample_rate: int = 16000) -> np.ndarray:
+        """RAM üzerindeki NumPy ses dizisini (16kHz float32) 0-Disk I/O ile gürültüden arındırır."""
+        if not self.enabled or audio_data is None or len(audio_data) == 0:
+            return audio_data
+
+        self._lazy_init()
+        if not self.enabled or self._df_model is None:
+            return audio_data
+
+        try:
+            import numpy as np
+            import torch
+            from df.enhance import enhance
+
+            audio_tensor = torch.from_numpy(audio_data).float().unsqueeze(0)
+            enhanced_tensor = enhance(self._df_model, self._df_state, audio_tensor)
+            return enhanced_tensor.squeeze().cpu().numpy()
+        except Exception as ex:
+            logger.error("Denoise In-Memory işlemi sırasında hata oluştu (%s). Ham ses kullanılıyor.", ex)
+            return audio_data
+

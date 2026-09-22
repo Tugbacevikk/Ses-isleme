@@ -65,10 +65,12 @@ def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
         from audio_analyzer.services.pipeline_factory import get_shared_pipeline
 
         pipeline = get_shared_pipeline()
-        local_audio_path = storage.get_path(storage_uri)
-
         try:
-            utterances, language, overlap_summary = pipeline.process(local_audio_path)
+            if file_bytes and hasattr(pipeline, "process_bytes"):
+                utterances, language, overlap_summary = pipeline.process_bytes(file_bytes)
+            else:
+                local_audio_path = storage.get_path(storage_uri)
+                utterances, language, overlap_summary = pipeline.process(local_audio_path)
 
             # 3. Sonuçları kaydet (COMPLETED) ve transaction'ı kapat
             with get_uow() as uow:
