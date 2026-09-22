@@ -2,9 +2,10 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from audio_analyzer.domain.interfaces import IAudioProcessor, IDiarizer, ISTTEngine, IVADProcessor
-from audio_analyzer.domain.models import TranscriptUtterance
+from audio_analyzer.domain.interfaces import IAudioDenoiser, IAudioProcessor, IDiarizer, ISTTEngine, IVADProcessor
+from audio_analyzer.domain.models import OverlapSummary, TranscriptUtterance
 from audio_analyzer.services.fusion_engine import FusionEngine
+from audio_analyzer.services.overlap_detector import OverlapDetector
 from audio_analyzer.services.semantic_refiner import SemanticRefiner
 
 logger = logging.getLogger(__name__)
@@ -13,8 +14,9 @@ logger = logging.getLogger(__name__)
 class AudioAnalysisPipeline:
     """
     Ses Analizi Ana Pipeline Orkestratörü.
-    Gelen ses dosyasını (MP3, WAV, FLAC vb.) normalize eder, VAD, STT ve Diarization
-    motorlarını çalıştırıp çıktıları FusionEngine ve SemanticRefiner ile hizalar.
+    Gelen ses dosyasını (MP3, WAV, FLAC vb.) gürültüden arındırır (Denoiser),
+    normalize eder, VAD, STT ve Diarization motorlarını paralel çalıştırır,
+    çakışmaları (Overlap Detection) tespit eder ve çıktıları FusionEngine ile birleştirir.
     """
 
     def __init__(
@@ -23,6 +25,7 @@ class AudioAnalysisPipeline:
         diarizer: IDiarizer,
         audio_processor: Optional[IAudioProcessor] = None,
         vad_processor: Optional[IVADProcessor] = None,
+        denoiser: Optional[IAudioDenoiser] = None,
         fusion_engine: Optional[FusionEngine] = None,
         semantic_refiner: Optional[SemanticRefiner] = None,
     ):
@@ -30,30 +33,43 @@ class AudioAnalysisPipeline:
         self.diarizer = diarizer
         self.audio_processor = audio_processor
         self.vad_processor = vad_processor
+        self.denoiser = denoiser
         self.fusion_engine = fusion_engine or FusionEngine()
         self.semantic_refiner = semantic_refiner or SemanticRefiner()
 
-    def process(self, audio_path: str) -> Tuple[List[TranscriptUtterance], Optional[str]]:
+    def process(
+        self, audio_path: str
+    ) -> Tuple[List[TranscriptUtterance], Optional[str], OverlapSummary]:
         """
         Ses dosyasını (MP3/WAV/FLAC vb.) analiz eder.
-        Returns: (List[TranscriptUtterance], detected_language)
+        Returns: (List[TranscriptUtterance], detected_language, overlap_summary)
         """
         working_path = audio_path
-        created_temp_file: Optional[str] = None
+        created_temp_files: List[str] = []
 
         try:
-            # 1. Ses Ön İşleme & Normalizasyon (MP3 -> 16kHz Mono WAV Dönüşümü)
+            # 1. Ön Gürültü Temizleme (DeepFilterNet Denoiser)
+            if self.denoiser:
+                denoised_wav_path = str(Path(audio_path).with_suffix(".denoised.wav"))
+                audio_after_denoise = self.denoiser.denoise(
+                    input_path=audio_path, output_path=denoised_wav_path
+                )
+                if audio_after_denoise != audio_path:
+                    created_temp_files.append(audio_after_denoise)
+                    working_path = audio_after_denoise
+
+            # 2. Ses Ön İşleme & Normalizasyon (MP3 -> 16kHz Mono WAV Dönüşümü)
             if self.audio_processor:
-                processed_wav_path = str(Path(audio_path).with_suffix(".processed.wav"))
+                processed_wav_path = str(Path(working_path).with_suffix(".processed.wav"))
                 working_path = self.audio_processor.normalize_and_resample(
-                    input_path=audio_path,
+                    input_path=working_path,
                     output_path=processed_wav_path,
                     target_sample_rate=16000,
                 )
-                if working_path != audio_path:
-                    created_temp_file = working_path
+                if working_path != audio_path and working_path not in created_temp_files:
+                    created_temp_files.append(working_path)
 
-            # 2. VAD ile konuşma ve sessizlik aralıklarını çıkarma
+            # 3. VAD ile konuşma ve sessizlik aralıklarını çıkarma
             speech_timestamps: Optional[List[Tuple[float, float]]] = None
             if self.vad_processor:
                 try:
@@ -61,7 +77,7 @@ class AudioAnalysisPipeline:
                 except Exception as e:
                     logger.warning("VAD İşleme Hatası: %s. VAD filtresi atlanıyor.", e)
 
-            # 3 & 4. STT (Whisper Metne Çevirme) ve Diarization (Konuşmacı Ayrıştırma) Motorlarını PARALEL (Eşzamanlı) Çalıştır
+            # 4 & 5. STT ve Diarization Motorlarını PARALEL (Eşzamanlı) Çalıştır
             import concurrent.futures
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
@@ -71,23 +87,35 @@ class AudioAnalysisPipeline:
                 words, detected_language = future_stt.result()
                 diarization_segments = future_diar.result()
 
-            # 3b. VAD Filtrelemesi: Sessizlik alanlarında türetilen STT halüsinasyonlarını temizle
+            # 4b. VAD Filtrelemesi: Sessizlik alanlarında türetilen STT halüsinasyonlarını temizle
             if speech_timestamps and words:
                 words = self._filter_words_with_vad(words, speech_timestamps)
 
-            # 5. FusionEngine ile hizalama
+            # 6. Konuşma Çakışması (Overlap Detection) Metriklerini Hesapla
+            total_duration = 0.0
+            if words:
+                total_duration = max(w.end_time for w in words)
+            elif diarization_segments:
+                total_duration = max(s.end_time for s in diarization_segments)
+
+            overlap_summary = OverlapDetector.detect_overlaps(
+                diarization_segments=diarization_segments, total_audio_duration=total_duration
+            )
+
+            # 7. FusionEngine ile hizalama
             raw_utterances = self.fusion_engine.align(words, diarization_segments)
 
-            # 6. SemanticRefiner ile anlamsal rol hizalaması
+            # 8. SemanticRefiner ile anlamsal rol hizalaması
             final_utterances = self.semantic_refiner.refine(raw_utterances)
 
-            return final_utterances, detected_language
+            return final_utterances, detected_language, overlap_summary
         finally:
-            if created_temp_file and Path(created_temp_file).exists():
-                try:
-                    Path(created_temp_file).unlink()
-                except Exception as cleanup_err:
-                    logger.warning("Geçici ses dosyası temizleme uyarısı: %s", cleanup_err)
+            for tmp_file in created_temp_files:
+                if Path(tmp_file).exists():
+                    try:
+                        Path(tmp_file).unlink()
+                    except Exception as cleanup_err:
+                        logger.warning("Geçici ses dosyası temizleme uyarısı: %s", cleanup_err)
 
     def _filter_words_with_vad(
         self, words: List, speech_timestamps: List[Tuple[float, float]], tolerance: float = 0.3
@@ -101,7 +129,6 @@ class AudioAnalysisPipeline:
 
         filtered_words = []
         for word in words:
-            # Kelimenin orta noktası veya aralığı herhangi bir VAD konuşma segmentine düşüyor mu?
             is_speech = any(
                 (start - tolerance) <= word.midpoint <= (end + tolerance)
                 for start, end in speech_timestamps

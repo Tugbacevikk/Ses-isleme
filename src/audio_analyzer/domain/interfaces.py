@@ -156,3 +156,15 @@ class IVADProcessor(ABC):
         Cümle sonu sessizlik noktalarından tam parçalama sağlar.
         """
         pass
+
+
+class IAudioDenoiser(ABC):
+    """Ses Ön Gürültü Temizleme (Denoising) Soyut Arayüzü."""
+
+    @abstractmethod
+    def denoise(self, input_path: str, output_path: str) -> str:
+        """
+        Ses dosyasındaki arka plan gürültülerini temizler ve çıktı dosya yolunu döner.
+        """
+        pass
+

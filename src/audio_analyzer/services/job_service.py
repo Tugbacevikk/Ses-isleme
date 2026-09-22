@@ -80,7 +80,7 @@ class JobService:
 
                 self.pipeline = get_shared_pipeline()
 
-            utterances, language = self.pipeline.process(local_audio_path)
+            utterances, language, overlap_summary = self.pipeline.process(local_audio_path)
 
             # Başarılı ise sonuçları ve dili kaydet (COMPLETED)
             self.repo.save_utterances(record_id, utterances, language=language)

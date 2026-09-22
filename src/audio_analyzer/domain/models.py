@@ -83,6 +83,24 @@ class TranscriptUtterance(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class OverlapSegment(BaseModel):
+    """İki veya daha fazla konuşmacının aynı anda konuştuğu zaman aralığı."""
+
+    speakers: List[str]
+    start_time: float
+    end_time: float
+    duration: float
+
+
+class OverlapSummary(BaseModel):
+    """Konuşma çakışması ve kalite kontrol metrik özeti."""
+
+    total_overlap_seconds: float = 0.0
+    overlap_percentage: float = 0.0
+    interrupt_count: int = 0
+    overlaps: List[OverlapSegment] = Field(default_factory=list)
+
+
 class AudioRecord(BaseModel):
     """Ses kaydı domain varlığı."""
 
@@ -97,6 +115,8 @@ class AudioRecord(BaseModel):
     error_message: Optional[str] = None
     callback_url: Optional[str] = None
     webhook_status: Optional[str] = None
+    overlap_summary: Optional[OverlapSummary] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     utterances: List[TranscriptUtterance] = Field(default_factory=list)
+

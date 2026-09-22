@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from audio_analyzer.adapters.storage.storage_factory import get_storage_adapter
 from audio_analyzer.api.dependencies import SessionLocal, get_repository, get_uow
 from audio_analyzer.domain.interfaces import ITranscriptRepository
-from audio_analyzer.domain.models import JobStatus, TranscriptUtterance
+from audio_analyzer.domain.models import JobStatus, OverlapSummary, TranscriptUtterance
 from audio_analyzer.services.job_service import JobService
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
         local_audio_path = storage.get_path(storage_uri)
 
         try:
-            utterances, language = pipeline.process(local_audio_path)
+            utterances, language, overlap_summary = pipeline.process(local_audio_path)
 
             # 3. Sonuçları kaydet (COMPLETED) ve transaction'ı kapat
             with get_uow() as uow:
@@ -83,6 +83,7 @@ def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
                     "file_name": file_name,
                     "status": "COMPLETED",
                     "language": language,
+                    "overlap_summary": overlap_summary.dict() if overlap_summary else None,
                     "utterances": [
                         {
                             "speaker_id": u.speaker_id,
@@ -140,6 +141,7 @@ class JobStatusResponse(BaseModel):
     status: str
     language: Optional[str] = None
     error_message: Optional[str] = None
+    overlap_summary: Optional[OverlapSummary] = None
     utterances: List[UtteranceResponse] = []
 
 

@@ -64,15 +64,19 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
     diarizer = SpeechBrainECAPADiarizer(device_config=device_config)
 
     from audio_analyzer.adapters.audio.rust_dsp_adapter import RustAudioDSPProcessor
+    from audio_analyzer.adapters.audio.denoiser import DeepFilterDenoiser
 
     audio_processor = RustAudioDSPProcessor()
     vad_processor = SileroVADProcessor()
+    enable_denoiser = os.getenv("ENABLE_DENOISER", "true").lower() == "true"
+    denoiser = DeepFilterDenoiser(enabled=enable_denoiser)
 
     _cached_pipeline = AudioAnalysisPipeline(
         stt_engine=stt_engine,
         diarizer=diarizer,
         audio_processor=audio_processor,
         vad_processor=vad_processor,
+        denoiser=denoiser,
         fusion_engine=FusionEngine(max_silence_threshold=max_silence_threshold),
         semantic_refiner=SemanticRefiner(),
     )
