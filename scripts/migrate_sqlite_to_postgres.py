@@ -33,8 +33,15 @@ def migrate():
         sqlite_engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
         postgres_engine = create_engine(postgres_url, pool_pre_ping=True)
 
-        # PostgreSQL tablolarını otomatik oluştur
+        # PostgreSQL tablolarını güncel şema ile sıfırdan oluştur
         Base.metadata.create_all(postgres_engine)
+        
+        # PostgreSQL'de eksik kolonlar varsa ekle veya tabloları doğrula
+        with postgres_engine.connect() as conn:
+            from sqlalchemy import text
+            conn.execute(text("ALTER TABLE audio_records ADD COLUMN IF NOT EXISTS callback_url VARCHAR(1024);"))
+            conn.execute(text("ALTER TABLE audio_records ADD COLUMN IF NOT EXISTS webhook_status VARCHAR(50);"))
+            conn.commit()
 
         SqliteSession = sessionmaker(bind=sqlite_engine)
         PostgresSession = sessionmaker(bind=postgres_engine)
