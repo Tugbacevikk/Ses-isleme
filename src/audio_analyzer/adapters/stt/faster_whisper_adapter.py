@@ -21,8 +21,8 @@ class FasterWhisperAdapter(ISTTEngine):
         self.model_size = model_size
         self.device_config = device_config or DeviceConfig()
         self.initial_prompt = initial_prompt or (
-            "Bu bir Türkçe ses kaydıdır. İmla kurallarına, kelime hecelemelerine, "
-            "noktalama işaretlerine ve düzgün Türkçe dil bilgisine dikkat ediniz."
+            "Bu ses kaydı Türkçe bir konuşmadır. Yöresel konuşma şiveleri veya aksanlar içerse dahi "
+            "lütfen kelimeleri en uygun Türkçe anlamlı kelimelere ve imla kurallarına uygun çevirin."
         )
         self._model = None
 
@@ -56,6 +56,10 @@ class FasterWhisperAdapter(ISTTEngine):
                 initial_prompt=self.initial_prompt,
                 word_timestamps=True,
                 beam_size=beam_size,
+                condition_on_previous_text=False,
+                temperature=0.0,
+                repetition_penalty=1.1,
+                no_speech_threshold=0.6,
                 vad_filter=True,
             )
         except Exception:
@@ -65,6 +69,10 @@ class FasterWhisperAdapter(ISTTEngine):
                 initial_prompt=self.initial_prompt,
                 word_timestamps=True,
                 beam_size=beam_size,
+                condition_on_previous_text=False,
+                temperature=0.0,
+                repetition_penalty=1.1,
+                no_speech_threshold=0.6,
                 vad_filter=False,
             )
 

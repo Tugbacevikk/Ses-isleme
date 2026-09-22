@@ -125,11 +125,35 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                 n_spk = min(self.num_speakers, len(unit_embs))
                 raw_valid_labels = fcluster(Z, t=n_spk, criterion="maxclust") - 1
             else:
-                # Dynamic speaker estimation (cosine distance threshold ~0.32)
-                raw_valid_labels = fcluster(Z, t=0.32, criterion="distance") - 1
+                # Dinamik konuşmacı tespiti için gerçekçi ECAPA-TDNN mesafe eşiği (~0.58)
+                dist_thresh = float(os.getenv("DIARIZATION_THRESHOLD", "0.58"))
+                raw_valid_labels = fcluster(Z, t=dist_thresh, criterion="distance") - 1
                 n_clusters = len(np.unique(raw_valid_labels))
                 if n_clusters > self.max_speakers:
                     raw_valid_labels = fcluster(Z, t=self.max_speakers, criterion="maxclust") - 1
+
+            # Akıllı Ses İmzası Birleştirme (Centroid Cosine Similarity Merging):
+            # Aynı kişinin aşırı bölünmüş sekmelerini (vektör benzerliği > %82) otomatik birleştirir.
+            unique_labels = np.unique(raw_valid_labels)
+            if len(unique_labels) > 1:
+                centroids = {}
+                for lbl in unique_labels:
+                    mask = (raw_valid_labels == lbl)
+                    c_vec = np.mean(unit_embs[mask], axis=0)
+                    centroids[lbl] = c_vec / (np.linalg.norm(c_vec) + 1e-8)
+
+                label_map = {lbl: lbl for lbl in unique_labels}
+                lbl_list = list(unique_labels)
+                for i in range(len(lbl_list)):
+                    for j in range(i + 1, len(lbl_list)):
+                        l1, l2 = lbl_list[i], lbl_list[j]
+                        sim = float(np.dot(centroids[l1], centroids[l2]))
+                        if sim > 0.82:  # Ses imzaları %82+ aynıysa birleştir
+                            label_map[l2] = label_map[l1]
+
+                raw_valid_labels = np.array([label_map[lbl] for lbl in raw_valid_labels])
+                _, reindexed = np.unique(raw_valid_labels, return_inverse=True)
+                raw_valid_labels = reindexed
 
             # Map valid labels back to all windows
             raw_labels = np.zeros(num_wins, dtype=int)
