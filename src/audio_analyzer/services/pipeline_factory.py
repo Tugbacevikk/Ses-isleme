@@ -16,7 +16,10 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-_cached_pipeline: Optional[AudioAnalysisPipeline] = None
+def reset_pipeline_cache():
+    """Önbellekteki pipeline nesnesini sıfırlar, böylece güncel parametreler yeniden yüklenir."""
+    global _cached_pipeline
+    _cached_pipeline = None
 
 
 def get_shared_pipeline() -> AudioAnalysisPipeline:
