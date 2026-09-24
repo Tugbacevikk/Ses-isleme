@@ -82,10 +82,11 @@ class SemanticRefiner:
         if not utterances:
             return []
 
-        # 0. Halüsinatif kelime/sözcük grubu tekrarlarını temizle ("bu sefer, bu sefer, bu sefer...")
+        # 0. Halüsinatif kelime/sözcük grubu tekrarlarını ve imla hatalarını temizle
         cleaned_utterances: List[TranscriptUtterance] = []
         for u in utterances:
             cleaned_txt = self._clean_repetitive_text(u.text)
+            cleaned_txt = self._normalize_turkish_text(cleaned_txt)
             cleaned_utterances.append(
                 TranscriptUtterance(
                     id=u.id,
@@ -150,6 +151,39 @@ class SemanticRefiner:
                 if not cleaned_parts or p.lower() != cleaned_parts[-1].lower():
                     cleaned_parts.append(p)
             text = ", ".join(cleaned_parts)
+
+        return text
+
+    def _normalize_turkish_text(self, text: str) -> str:
+        """
+        Türkçe harf, imla ve birleşik kelime hatalarını (örn: "Şarşamba" -> "Çarşamba", "çarşambagünü" -> "Çarşamba günü", "mi ?" -> "mi?") otomatik düzeltir.
+        """
+        if not text:
+            return text
+
+        import re
+
+        # Soru işaretleri ve noktalamalardan önceki boşlukları temizle ("mi ?" -> "mi?")
+        text = re.sub(r'\s+([\?\!\,\.\:\;])', r'\1', text)
+
+        # Sık rastlanan fonetik imla ve harf hataları
+        corrections = {
+            r'\bŞarşamba\b': 'Çarşamba',
+            r'\bşarşamba\b': 'çarşamba',
+            r'\bçarşambagünü\b': 'çarşamba günü',
+            r'\bÇarşambagünü\b': 'Çarşamba günü',
+            r'\bperşembegünü\b': 'perşembe günü',
+            r'\bcumagünü\b': 'cuma günü',
+            r'\bpazartesigünü\b': 'pazartesi günü',
+            r'\bsalıgünü\b': 'salı günü',
+        }
+        for pattern, repl in corrections.items():
+            text = re.sub(pattern, repl, text)
+
+        # Birleşik gün isimlerini ayır
+        days = ["pazartesi", "salı", "çarşamba", "perşembe", "cuma", "cumartesi", "pazar"]
+        for day in days:
+            text = re.sub(rf'\b({day})(günü|gün|sabahı|akşamı)\b', r'\1 \2', text, flags=re.IGNORECASE)
 
         return text
 
