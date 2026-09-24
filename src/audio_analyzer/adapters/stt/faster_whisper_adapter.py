@@ -20,10 +20,8 @@ class FasterWhisperAdapter(ISTTEngine):
     ):
         self.model_size = model_size
         self.device_config = device_config or DeviceConfig()
-        self.initial_prompt = initial_prompt or (
-            "Bu ses kaydı Türkçe bir konuşmadır. Yöresel konuşma şiveleri veya aksanlar içerse dahi "
-            "lütfen kelimeleri en uygun Türkçe anlamlı kelimelere ve imla kurallarına uygun çevirin."
-        )
+        # Uzun prompt'ların neden olduğu yönlendirme (bias) ve halüsinatif kelime uydurmayı önlemek için varsayılan None
+        self.initial_prompt = initial_prompt
         self._model = None
 
     def _lazy_load_model(self):
@@ -49,6 +47,7 @@ class FasterWhisperAdapter(ISTTEngine):
         self._lazy_load_model()
         beam_size = int(os.getenv("WHISPER_BEAM_SIZE", "2"))
         batch_size = int(os.getenv("WHISPER_BATCH_SIZE", "16"))
+        vad_params = dict(min_silence_duration_ms=1000, speech_pad_ms=400)
 
         try:
             from faster_whisper import BatchedInferencePipeline
@@ -68,6 +67,7 @@ class FasterWhisperAdapter(ISTTEngine):
                 compression_ratio_threshold=2.4,
                 log_prob_threshold=-1.0,
                 vad_filter=True,
+                vad_parameters=vad_params,
             )
         except Exception as e:
             segments, info = self._model.transcribe(
