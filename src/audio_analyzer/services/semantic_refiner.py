@@ -113,7 +113,10 @@ class SemanticRefiner:
             else:
                 refined.append(utt)
 
-        return self._normalize_short_gaps(refined)
+        # 3. Çağrı açılış selamlamasını kitle (Role Anchoring - ilk 12 saniyedeki açılış cümlelerini tek kart yap)
+        anchored_utterances = self._lock_opening_greetings(refined)
+
+        return self._normalize_short_gaps(anchored_utterances)
 
     def _clean_repetitive_text(self, text: str) -> str:
         """
@@ -243,6 +246,52 @@ class SemanticRefiner:
                 return [utt1, utt2]
 
         return [utt]
+
+    def _lock_opening_greetings(
+        self, utterances: List[TranscriptUtterance]
+    ) -> List[TranscriptUtterance]:
+        """
+        Çağrı merkezi açılış selamlama cümlelerini (ilk 12 saniye içindeki 'buyurun', 'müşteri hizmetleri',
+        'nasıl yardımcı olabilirim' vb.) tek bir temsilci (SPEAKER_00) kartına kilitler ve birleştirir.
+        """
+        if len(utterances) <= 1:
+            return utterances
+
+        greeting_keywords = [
+            "müşteri hizmetleri",
+            "hizmetleri birimi",
+            "hoş geldiniz",
+            "çağrı merkezi",
+            "temsilciniz",
+        ]
+
+        # İlk 12 saniye içindeki selamlama kartlarını tespit et
+        opening_indices = []
+        for idx, u in enumerate(utterances):
+            if u.start_time <= 12.0:
+                txt_lower = u.text.lower()
+                if any(kw in txt_lower for kw in greeting_keywords):
+                    opening_indices.append(idx)
+            else:
+                break
+
+        # Eğer ilk 12 saniyede ardışık selamlama parçaları varsa hepsini SPEAKER_00 olarak birleştir
+        if len(opening_indices) >= 2 and opening_indices == list(range(len(opening_indices))):
+            primary_spk = utterances[0].speaker_id
+            combined_text = " ".join(utterances[i].text.strip() for i in opening_indices)
+            start_t = utterances[0].start_time
+            end_t = utterances[opening_indices[-1]].end_time
+
+            anchored_utt = TranscriptUtterance(
+                id=utterances[0].id,
+                speaker_id=primary_spk,
+                start_time=start_t,
+                end_time=end_t,
+                text=combined_text,
+            )
+            return [anchored_utt] + utterances[len(opening_indices):]
+
+        return utterances
 
     def _normalize_short_gaps(
         self, utterances: List[TranscriptUtterance]
