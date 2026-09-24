@@ -267,16 +267,17 @@ class SemanticRefiner:
                 if not curr_text or not nxt_text:
                     break
 
-                # 1. Aynı konuşmacı ve kısa sessizlik arası (<0.6s)
-                is_same_speaker_short_gap = (gap < 0.6 and nxt.speaker_id == curr.speaker_id)
+                # 1. Aynı konuşmacı ise ve aralık < 1.5s ise tek kartta birleştir
+                is_same_speaker = (gap < 1.5 and nxt.speaker_id == curr.speaker_id)
 
-                # 2. Cümle bölünmesi (Noktalama işareti ile bitmemiş ve sonraki kelime küçük harfle başlıyorsa)
+                # 2. Farklı konuşmacı atanmış ama sıfır sessizlik (gap <= 0.05s) veya küçük harfli cümle parçalanması
                 nxt_starts_lower = nxt_text[0].islower()
-                is_mid_sentence_split = (
-                    gap < 0.5 and not curr_text.endswith((".", "?", "!", ":", ";")) and nxt_starts_lower
+                is_clause_split = (
+                    not curr_text.endswith((".", "?", "!", ":", ";"))
+                    and (gap <= 0.05 or nxt_starts_lower)
                 )
 
-                if is_same_speaker_short_gap or is_mid_sentence_split:
+                if is_same_speaker or is_clause_split:
                     combined_text = (curr_text + " " + nxt_text).strip()
                     curr = TranscriptUtterance(
                         id=curr.id,

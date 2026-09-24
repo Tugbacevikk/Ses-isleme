@@ -163,9 +163,8 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                 lbl_list = list(unique_labels)
                 for i in range(len(lbl_list)):
                     for j in range(i + 1, len(lbl_list)):
-                        l1, l2 = lbl_list[i], lbl_list[j]
-                        sim = float(np.dot(centroids[l1], centroids[l2]))
-                        if sim > 0.82:  # Ses imzaları %82+ aynıysa birleştir
+                        sim_thresh = float(os.getenv("DIARIZATION_SIM_THRESHOLD", "0.70"))
+                        if sim > sim_thresh:  # Ses imzaları %70+ aynıysa birleştir
                             label_map[l2] = label_map[l1]
 
                 raw_valid_labels = np.array([label_map[lbl] for lbl in raw_valid_labels])
