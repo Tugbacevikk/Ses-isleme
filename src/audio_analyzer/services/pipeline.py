@@ -191,7 +191,7 @@ class AudioAnalysisPipeline:
         return final_utterances, detected_language, overlap_summary
 
     def _filter_words_with_vad(
-        self, words: List, speech_timestamps: List[Tuple[float, float]], tolerance: float = 0.3
+        self, words: List, speech_timestamps: List[Tuple[float, float]], tolerance: float = 0.6
     ) -> List:
         """
         VAD konuşma aralıklarının tamamen dışında kalan (sessizlikte türetilmiş)
