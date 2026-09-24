@@ -77,10 +77,25 @@ class SemanticRefiner:
 
     def refine(self, utterances: List[TranscriptUtterance]) -> List[TranscriptUtterance]:
         """
-        Utterance listesini anlamsal cümle ve hizalama kontrolüne sokar.
+        Utterance listesini anlamsal cümle, hizalama ve tekrar temizliği kontrolüne sokar.
         """
         if not utterances:
             return []
+
+        # 0. Halüsinatif kelime/sözcük grubu tekrarlarını temizle ("bu sefer, bu sefer, bu sefer...")
+        cleaned_utterances: List[TranscriptUtterance] = []
+        for u in utterances:
+            cleaned_txt = self._clean_repetitive_text(u.text)
+            cleaned_utterances.append(
+                TranscriptUtterance(
+                    id=u.id,
+                    speaker_id=u.speaker_id,
+                    start_time=u.start_time,
+                    end_time=u.end_time,
+                    text=cleaned_txt,
+                )
+            )
+        utterances = cleaned_utterances
 
         # 1. LLM Modu aktifse ve Ollama erişilebilirse LLM tabanlı refiner çalıştır
         if self.use_llm:
@@ -98,6 +113,45 @@ class SemanticRefiner:
                 refined.append(utt)
 
         return self._normalize_short_gaps(refined)
+
+    def _clean_repetitive_text(self, text: str) -> str:
+        """
+        "bu sefer, bu sefer, bu sefer..." gibi tekrarlayan sözcük ve kelime öbeklerini temizler.
+        """
+        if not text:
+            return text
+
+        words = text.strip().split()
+        if len(words) >= 4:
+            new_words = []
+            i = 0
+            while i < len(words):
+                if i + 3 < len(words) and [w.lower() for w in words[i:i+2]] == [w.lower() for w in words[i+2:i+4]]:
+                    new_words.extend(words[i:i+2])
+                    target = [w.lower() for w in words[i:i+2]]
+                    i += 4
+                    while i + 1 < len(words) and [w.lower() for w in words[i:i+2]] == target:
+                        i += 2
+                elif i + 1 < len(words) and words[i].lower() == words[i+1].lower():
+                    new_words.append(words[i])
+                    target = words[i].lower()
+                    i += 2
+                    while i < len(words) and words[i].lower() == target:
+                        i += 1
+                else:
+                    new_words.append(words[i])
+                    i += 1
+            text = " ".join(new_words)
+
+        parts = [p.strip() for p in text.split(",") if p.strip()]
+        if parts:
+            cleaned_parts = []
+            for p in parts:
+                if not cleaned_parts or p.lower() != cleaned_parts[-1].lower():
+                    cleaned_parts.append(p)
+            text = ", ".join(cleaned_parts)
+
+        return text
 
     def _refine_with_llm(
         self, utterances: List[TranscriptUtterance]

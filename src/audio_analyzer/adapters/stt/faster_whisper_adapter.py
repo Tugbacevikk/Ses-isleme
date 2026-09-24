@@ -62,8 +62,11 @@ class FasterWhisperAdapter(ISTTEngine):
                 beam_size=beam_size,
                 condition_on_previous_text=False,
                 temperature=0.0,
-                repetition_penalty=1.1,
+                repetition_penalty=1.25,
+                no_repeat_ngram_size=3,
                 no_speech_threshold=0.6,
+                compression_ratio_threshold=2.4,
+                log_prob_threshold=-1.0,
                 vad_filter=True,
             )
         except Exception as e:
@@ -75,15 +78,28 @@ class FasterWhisperAdapter(ISTTEngine):
                 beam_size=beam_size,
                 condition_on_previous_text=False,
                 temperature=0.0,
-                repetition_penalty=1.1,
+                repetition_penalty=1.25,
+                no_repeat_ngram_size=3,
                 no_speech_threshold=0.6,
+                compression_ratio_threshold=2.4,
+                log_prob_threshold=-1.0,
                 vad_filter=False,
             )
 
         words: List[WordSegment] = []
+        last_clean_words: List[str] = []
+
         for segment in segments:
             if hasattr(segment, "words") and segment.words:
                 for w in segment.words:
+                    clean_w = w.word.strip().lower()
+                    # Ardışık 3'ten fazla kelime tekrarı döngüsünü filtrele
+                    if len(last_clean_words) >= 2 and clean_w == last_clean_words[-1] == last_clean_words[-2]:
+                        continue
+                    last_clean_words.append(clean_w)
+                    if len(last_clean_words) > 10:
+                        last_clean_words.pop(0)
+
                     words.append(
                         WordSegment(
                             word=w.word,
