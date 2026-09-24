@@ -76,8 +76,11 @@ class AudioConverterProcessor(IAudioProcessor):
             data = np.mean(data, axis=1)
 
         if sr != target_sample_rate:
-            num_samples = int(len(data) * target_sample_rate / sr)
-            data = scipy.signal.resample(data, num_samples)
+            from math import gcd
+            g = gcd(int(sr), target_sample_rate)
+            up = target_sample_rate // g
+            down = int(sr) // g
+            data = scipy.signal.resample_poly(data, up, down)
 
         # 16-bit PCM WAV olarak kaydet
         sf.write(str(output_p), data, target_sample_rate, subtype="PCM_16")
@@ -124,8 +127,11 @@ class AudioConverterProcessor(IAudioProcessor):
                 data = np.mean(data, axis=1)
 
             if sr != target_sample_rate:
-                num_samples = int(len(data) * target_sample_rate / sr)
-                data = scipy.signal.resample(data, num_samples)
+                from math import gcd
+                g = gcd(int(sr), target_sample_rate)
+                up = target_sample_rate // g
+                down = int(sr) // g
+                data = scipy.signal.resample_poly(data, up, down)
                 sr = target_sample_rate
 
             return data.astype(np.float32), sr
