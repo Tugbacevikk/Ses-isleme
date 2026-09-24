@@ -30,7 +30,8 @@ class FasterWhisperAdapter(ISTTEngine):
             try:
                 from faster_whisper import WhisperModel
 
-                cpu_threads = int(os.getenv("WHISPER_CPU_THREADS", "4"))
+                default_threads = min(8, os.cpu_count() or 4)
+                cpu_threads = int(os.getenv("WHISPER_CPU_THREADS", str(default_threads)))
                 self._model = WhisperModel(
                     self.model_size,
                     device=self.device_config.device,
@@ -45,7 +46,7 @@ class FasterWhisperAdapter(ISTTEngine):
 
     def transcribe(self, audio_path: str) -> Tuple[List[WordSegment], Optional[str]]:
         self._lazy_load_model()
-        beam_size = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
+        beam_size = int(os.getenv("WHISPER_BEAM_SIZE", "2"))
         batch_size = int(os.getenv("WHISPER_BATCH_SIZE", "16"))
         vad_params = dict(min_silence_duration_ms=1000, speech_pad_ms=400)
 
