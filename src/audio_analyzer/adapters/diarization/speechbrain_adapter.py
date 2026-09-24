@@ -78,7 +78,7 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                 sr = target_sr
 
             win_sec = 1.2
-            step_sec = 0.5
+            step_sec = float(os.getenv("DIARIZATION_STEP_SEC", "0.6"))
             win_samples = int(sr * win_sec)
             step_samples = int(sr * step_sec)
 
