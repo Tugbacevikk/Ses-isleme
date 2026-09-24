@@ -71,8 +71,10 @@ class SpeechBrainECAPADiarizer(IDiarizer):
 
             target_sr = 16000
             if sr != target_sr:
-                num_samples = int(len(data) * target_sr / sr)
-                data = scipy.signal.resample(data, num_samples)
+                from math import gcd
+
+                g = gcd(int(sr), target_sr)
+                data = scipy.signal.resample_poly(data, target_sr // g, int(sr) // g)
                 sr = target_sr
 
             win_sec = 1.2

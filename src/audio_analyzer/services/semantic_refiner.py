@@ -248,7 +248,8 @@ class SemanticRefiner:
         self, utterances: List[TranscriptUtterance]
     ) -> List[TranscriptUtterance]:
         """
-        Aynı konuşmacının 0.5 saniyeden kısa aralıklı parçalanmış cümlelerini birleştirir.
+        Aynı konuşmacının 0.6 saniyeden kısa aralıklı parçalanmış cümlelerini ve
+        noktalama ile bitmemiş yarım cümleleri (mid-sentence split) tek bir konuşmacı kartında birleştirir.
         """
         if len(utterances) <= 1:
             return utterances
@@ -257,11 +258,26 @@ class SemanticRefiner:
         i = 0
         while i < len(utterances):
             curr = utterances[i]
-            if i + 1 < len(utterances):
+            while i + 1 < len(utterances):
                 nxt = utterances[i + 1]
                 gap = nxt.start_time - curr.end_time
-                if gap < 0.5 and nxt.speaker_id == curr.speaker_id:
-                    combined_text = (curr.text.strip() + " " + nxt.text.strip()).strip()
+                curr_text = curr.text.strip()
+                nxt_text = nxt.text.strip()
+
+                if not curr_text or not nxt_text:
+                    break
+
+                # 1. Aynı konuşmacı ve kısa sessizlik arası (<0.6s)
+                is_same_speaker_short_gap = (gap < 0.6 and nxt.speaker_id == curr.speaker_id)
+
+                # 2. Cümle bölünmesi (Noktalama işareti ile bitmemiş ve sonraki kelime küçük harfle başlıyorsa)
+                nxt_starts_lower = nxt_text[0].islower()
+                is_mid_sentence_split = (
+                    gap < 0.5 and not curr_text.endswith((".", "?", "!", ":", ";")) and nxt_starts_lower
+                )
+
+                if is_same_speaker_short_gap or is_mid_sentence_split:
+                    combined_text = (curr_text + " " + nxt_text).strip()
                     curr = TranscriptUtterance(
                         id=curr.id,
                         speaker_id=curr.speaker_id,
@@ -270,6 +286,8 @@ class SemanticRefiner:
                         text=combined_text,
                     )
                     i += 1
+                else:
+                    break
             merged.append(curr)
             i += 1
 

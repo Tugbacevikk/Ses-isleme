@@ -56,9 +56,10 @@ class SileroVADProcessor(IVADProcessor):
 
         if sr != 16000:
             import scipy.signal
+            from math import gcd
 
-            num_samples = int(len(data) * 16000 / sr)
-            data = scipy.signal.resample(data, num_samples)
+            g = gcd(int(sr), 16000)
+            data = scipy.signal.resample_poly(data, 16000 // g, int(sr) // g)
             sr = 16000
 
         self._load_model()

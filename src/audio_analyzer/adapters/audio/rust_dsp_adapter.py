@@ -46,14 +46,15 @@ class RustAudioDSPProcessor(IAudioProcessor):
         if HAS_RUST_NATIVE:
             return native_audio_dsp.resample_pcm_16k(pcm_signal, original_sr)
         else:
-            # NumPy Fallback
+            # SciPy Polyphase Fallback
             if original_sr == 16000:
                 return pcm_signal
+            import scipy.signal
+            from math import gcd
+
             arr = np.array(pcm_signal, dtype=np.float32)
-            num_samples = int(len(arr) * 16000 / original_sr)
-            resampled = np.interp(
-                np.linspace(0, len(arr), num_samples, endpoint=False), np.arange(len(arr)), arr
-            )
+            g = gcd(int(original_sr), 16000)
+            resampled = scipy.signal.resample_poly(arr, 16000 // g, int(original_sr) // g)
             return resampled.tolist()
 
     def fast_vad_energy(
