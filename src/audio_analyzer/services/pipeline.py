@@ -134,10 +134,16 @@ class AudioAnalysisPipeline:
             )
         else:
             import soundfile as sf
+            import scipy.signal
+            from math import gcd
 
             audio_array, sr = sf.read(io.BytesIO(file_bytes))
             if audio_array.ndim > 1:
                 audio_array = np.mean(audio_array, axis=1)
+
+            if sr != 16000:
+                g = gcd(int(sr), 16000)
+                audio_array = scipy.signal.resample_poly(audio_array, 16000 // g, int(sr) // g)
 
         # 2. Ön Gürültü Temizleme (RAM Üzerinde Denoise)
         if self.denoiser and hasattr(self.denoiser, "denoise_array"):

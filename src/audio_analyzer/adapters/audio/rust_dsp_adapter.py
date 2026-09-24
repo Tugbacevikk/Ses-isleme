@@ -33,6 +33,12 @@ class RustAudioDSPProcessor(IAudioProcessor):
         """
         return self.fallback.normalize_and_resample(input_path, output_path, target_sample_rate)
 
+    def convert_bytes_to_ndarray(
+        self, file_bytes: bytes, target_sample_rate: int = 16000
+    ) -> Tuple[np.ndarray, int]:
+        """RAM üzerindeki ses baytlarını (0 Disk I/O) 16kHz float32 Mono NumPy dizisine dönüştürür."""
+        return self.fallback.convert_bytes_to_ndarray(file_bytes, target_sample_rate)
+
     def fast_resample(self, pcm_signal: List[float], original_sr: int) -> List[float]:
         """
         Rust hızında PCM sinyal resample işlemi.
