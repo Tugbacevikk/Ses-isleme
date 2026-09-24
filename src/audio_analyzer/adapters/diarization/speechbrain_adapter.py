@@ -135,41 +135,36 @@ class SpeechBrainECAPADiarizer(IDiarizer):
             norms = np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8
             unit_embs = embeddings / norms
 
-            dists = pdist(unit_embs, metric="cosine")
-            Z = linkage(dists, method="average")
+            dist_thresh = float(os.getenv("DIARIZATION_THRESHOLD", "0.55"))
 
-            if self.num_speakers is not None:
-                n_spk = min(self.num_speakers, len(unit_embs))
-                raw_valid_labels = fcluster(Z, t=n_spk, criterion="maxclust") - 1
+            if len(unit_embs) == 1:
+                raw_valid_labels = np.zeros(1, dtype=int)
             else:
-                # Dinamik konuşmacı tespiti için gerçekçi ECAPA-TDNN mesafe eşiği (~0.58)
-                dist_thresh = float(os.getenv("DIARIZATION_THRESHOLD", "0.58"))
-                raw_valid_labels = fcluster(Z, t=dist_thresh, criterion="distance") - 1
-                n_clusters = len(np.unique(raw_valid_labels))
-                if n_clusters > self.max_speakers:
-                    raw_valid_labels = fcluster(Z, t=self.max_speakers, criterion="maxclust") - 1
+                from sklearn.cluster import AgglomerativeClustering
 
-            # Akıllı Ses İmzası Birleştirme (Centroid Cosine Similarity Merging):
-            # Aynı kişinin aşırı bölünmüş sekmelerini (vektör benzerliği > %82) otomatik birleştirir.
-            unique_labels = np.unique(raw_valid_labels)
-            if len(unique_labels) > 1:
-                centroids = {}
-                for lbl in unique_labels:
-                    mask = (raw_valid_labels == lbl)
-                    c_vec = np.mean(unit_embs[mask], axis=0)
-                    centroids[lbl] = c_vec / (np.linalg.norm(c_vec) + 1e-8)
-
-                label_map = {lbl: lbl for lbl in unique_labels}
-                lbl_list = list(unique_labels)
-                for i in range(len(lbl_list)):
-                    for j in range(i + 1, len(lbl_list)):
-                        sim_thresh = float(os.getenv("DIARIZATION_SIM_THRESHOLD", "0.70"))
-                        if sim > sim_thresh:  # Ses imzaları %70+ aynıysa birleştir
-                            label_map[l2] = label_map[l1]
-
-                raw_valid_labels = np.array([label_map[lbl] for lbl in raw_valid_labels])
-                _, reindexed = np.unique(raw_valid_labels, return_inverse=True)
-                raw_valid_labels = reindexed
+                if self.num_speakers is not None:
+                    n_spk = min(self.num_speakers, len(unit_embs))
+                    if n_spk <= 1:
+                        raw_valid_labels = np.zeros(len(unit_embs), dtype=int)
+                    else:
+                        model = AgglomerativeClustering(
+                            n_clusters=n_spk, metric="cosine", linkage="average"
+                        )
+                        raw_valid_labels = model.fit_predict(unit_embs)
+                else:
+                    model = AgglomerativeClustering(
+                        n_clusters=None,
+                        metric="cosine",
+                        linkage="average",
+                        distance_threshold=dist_thresh,
+                    )
+                    raw_valid_labels = model.fit_predict(unit_embs)
+                    n_clusters = len(np.unique(raw_valid_labels))
+                    if n_clusters > self.max_speakers:
+                        model_cap = AgglomerativeClustering(
+                            n_clusters=self.max_speakers, metric="cosine", linkage="average"
+                        )
+                        raw_valid_labels = model_cap.fit_predict(unit_embs)
 
             # Map valid labels back to all windows
             raw_labels = np.zeros(num_wins, dtype=int)
