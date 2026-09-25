@@ -44,80 +44,14 @@ async def verify_api_key(api_key: Optional[str] = Depends(api_key_header)):
 def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
     """
     Arka plan asenkron worker fonksiyonu (Non-blocking HTTP 202 mimarisi).
-    DB kilitlerini engellemek için transaction'lar kısa süreli tutulur ve 
-    uzun süren AI modelleri açık transaction olmadan çalıştırılır.
+    Celery, RQ ve BackgroundTasks için merkezi JobService.execute_job iş mantığını çağırır.
     """
     try:
-        storage = get_storage_adapter()
         record_uuid = uuid.UUID(job_id_str)
-        callback_url = None
-
-        # 1. Durumu PROCESSING olarak güncelle ve transaction'ı hemen kapat
         with get_uow() as uow:
-            record = uow.repository.get_record_by_id(record_uuid)
-            if not record:
-                return
-            uow.repository.update_status(record_uuid, JobStatus.PROCESSING)
-            storage_uri = record.storage_uri
-            callback_url = record.callback_url
-
-        # 2. Uzun süren AI Modellerini çalıştır (DB kilidi YOK)
-        from audio_analyzer.services.pipeline_factory import get_shared_pipeline
-
-        pipeline = get_shared_pipeline()
-        try:
-            if file_bytes and hasattr(pipeline, "process_bytes"):
-                utterances, language, overlap_summary = pipeline.process_bytes(file_bytes)
-            else:
-                local_audio_path = storage.get_path(storage_uri)
-                utterances, language, overlap_summary = pipeline.process(local_audio_path)
-
-            # 3. Sonuçları kaydet (COMPLETED) ve transaction'ı kapat
-            with get_uow() as uow:
-                uow.repository.save_utterances(record_uuid, utterances, language=language)
-
-            if callback_url:
-                from audio_analyzer.services.webhook_service import WebhookService
-
-                webhook_svc = WebhookService()
-                payload = {
-                    "job_id": job_id_str,
-                    "file_name": file_name,
-                    "status": "COMPLETED",
-                    "language": language,
-                    "overlap_summary": overlap_summary.dict() if overlap_summary else None,
-                    "utterances": [
-                        {
-                            "speaker_id": u.speaker_id,
-                            "start_time": u.start_time,
-                            "end_time": u.end_time,
-                            "text": u.text,
-                        }
-                        for u in utterances
-                    ],
-                }
-                webhook_svc.send_callback(callback_url, payload)
-
-        except Exception as ex:
-            logger.error("Background pipeline error for job_id=%s: %s", job_id_str, ex, exc_info=True)
-            from audio_analyzer.services.job_service import sanitize_error_message
-
-            sanitized_msg = sanitize_error_message(ex)
-            with get_uow() as uow:
-                uow.repository.update_status(record_uuid, JobStatus.FAILED, error_message=sanitized_msg)
-
-            if callback_url:
-                from audio_analyzer.services.webhook_service import WebhookService
-
-                webhook_svc = WebhookService()
-                payload = {
-                    "job_id": job_id_str,
-                    "file_name": file_name,
-                    "status": "FAILED",
-                    "error_message": sanitized_msg,
-                }
-                webhook_svc.send_callback(callback_url, payload)
-
+            storage = get_storage_adapter()
+            job_service = JobService(storage=storage, repository=uow.repository)
+            job_service.execute_job(record_uuid, file_bytes=file_bytes)
     except Exception as ex:
         logger.error("Background task execution error: %s", ex, exc_info=True)
 

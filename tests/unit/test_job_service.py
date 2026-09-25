@@ -42,3 +42,25 @@ def test_execute_job_failure_does_not_leak_traceback(tmp_path, in_memory_db):
     assert "Traceback (most recent call last)" not in record.error_message
     assert "C:\\Secret\\Path" not in record.error_message
     assert "RuntimeError" in record.error_message
+
+
+def test_execute_job_triggers_webhook_callback(tmp_path, in_memory_db, monkeypatch):
+    storage = LocalStorageAdapter(base_dir=str(tmp_path / "storage"))
+    repository = PostgresRepository(session=in_memory_db)
+
+    mock_pipeline = MagicMock()
+    mock_pipeline.process.return_value = ([], "tr", None)
+
+    mock_send_callback = MagicMock(return_value=True)
+    monkeypatch.setattr("audio_analyzer.services.webhook_service.WebhookService.send_callback", mock_send_callback)
+
+    job_service = JobService(storage=storage, repository=repository, pipeline=mock_pipeline)
+
+    record_id = job_service.create_job("test_audio.wav", b"RIFFfakebytes", callback_url="https://example.com/webhook")
+    success = job_service.execute_job(record_id)
+
+    assert success is True
+    assert mock_send_callback.called
+    assert mock_send_callback.call_args[0][0] == "https://example.com/webhook"
+    assert mock_send_callback.call_args[0][1]["status"] == "COMPLETED"
+
