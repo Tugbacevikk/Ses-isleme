@@ -50,19 +50,10 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
             model_size=whisper_model_size, device_config=device_config
         )
     except Exception as e:
-        allow_mock = os.getenv("ALLOW_MOCK_STT", "false").lower() == "true"
-        if allow_mock:
-            logger.warning(
-                "FasterWhisper yüklenemedi (%s). ALLOW_MOCK_STT=true olduğu için MockSTTAdapter kullanılıyor.",
-                e,
-            )
-            from audio_analyzer.adapters.stt.mock_stt_adapter import MockSTTAdapter
+        raise RuntimeError(
+            f"STT Motoru (FasterWhisper) başlatılamadı: {e}. Lütfen model bağımlılıklarını kontrol edin."
+        )
 
-            stt_engine = MockSTTAdapter()
-        else:
-            raise RuntimeError(
-                f"STT Motoru (FasterWhisper) başlatılamadı: {e}. Lütfen model bağımlılıklarını kontrol edin."
-            )
 
     # 2. Diarization Engine (%100 Yerel ve İnternetsiz Token-Free Diarizasyon)
     from audio_analyzer.adapters.diarization.speechbrain_adapter import SpeechBrainECAPADiarizer

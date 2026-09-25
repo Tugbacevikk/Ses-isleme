@@ -100,13 +100,8 @@ async def main_async():
         stt_engine = FasterWhisperAdapter(model_size="small", device_config=device_config)
         print("      - STT Engine (FasterWhisper): [GERÇEK GERÇEK ZAMANLI AI MODELİ AKTİF - Small Model]")
     except Exception as e:
-        allow_mock = os.getenv("ALLOW_MOCK_STT", "false").lower() == "true"
-        if allow_mock:
-            print(f"      - STT Engine               : [DEMO MOCK STT AKTİF - ALLOW_MOCK_STT=true - {e}]")
-            from audio_analyzer.adapters.stt.mock_stt_adapter import MockSTTAdapter
-            stt_engine = MockSTTAdapter()
-        else:
-            raise RuntimeError(f"STT Motoru (FasterWhisper) yüklenemedi: {e}. Lütfen faster-whisper bağımlılığını veya ALLOW_MOCK_STT=true ayarını kontrol edin.")
+        raise RuntimeError(f"STT Motoru (FasterWhisper) yüklenemedi: {e}. Lütfen faster-whisper bağımlılığını kontrol edin.")
+
 
     # 4.2 Diarization Engine
     try:

@@ -15,19 +15,20 @@ class InMemoryStorageAdapter(IAudioStorage):
 
     def __init__(self, max_items: int = 100000):
         self.max_items = max_items
+        self._shared_buffer = InMemoryStorageAdapter._shared_buffer
 
     def save(self, file_bytes: bytes, file_name: str) -> str:
         unique_prefix = uuid.uuid4().hex[:8]
         storage_uri = f"ram://{unique_prefix}_{file_name}"
 
         # RAM doluluk koruması
-        if len(InMemoryStorageAdapter._shared_buffer) >= self.max_items:
-            # En eski anahtarı sil (FIFO)
-            first_key = next(iter(InMemoryStorageAdapter._shared_buffer))
-            del InMemoryStorageAdapter._shared_buffer[first_key]
+        while len(self._shared_buffer) >= self.max_items and self._shared_buffer:
+            first_key = next(iter(self._shared_buffer))
+            del self._shared_buffer[first_key]
 
-        InMemoryStorageAdapter._shared_buffer[storage_uri] = file_bytes
+        self._shared_buffer[storage_uri] = file_bytes
         return storage_uri
+
 
     def get_bytes(self, storage_uri: str) -> bytes:
         if storage_uri in InMemoryStorageAdapter._shared_buffer:

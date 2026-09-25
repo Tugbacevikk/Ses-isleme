@@ -3,11 +3,12 @@ from typing import List, Optional, Tuple
 import pytest
 
 from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
-from audio_analyzer.adapters.storage.local_storage_adapter import LocalStorageAdapter
+from audio_analyzer.adapters.storage.in_memory_storage_adapter import InMemoryStorageAdapter
 from audio_analyzer.domain.interfaces import IDiarizer, ISTTEngine
 from audio_analyzer.domain.models import DiarizationSegment, WordSegment
 from audio_analyzer.services.job_service import JobService
 from audio_analyzer.services.pipeline import AudioAnalysisPipeline
+
 
 
 class MockSTTEngine(ISTTEngine):
@@ -41,7 +42,7 @@ async def test_full_job_service_pipeline_e2e(tmp_path, in_memory_db):
     uçtan uca (E2E) mükemmel bir şekilde bir arada çalıştığını doğrular.
     """
     # 1. Adaptörlerin ve servislerin ayağa kaldırılması (Dependency Injection)
-    storage = LocalStorageAdapter(base_dir=str(tmp_path / "storage"))
+    storage = InMemoryStorageAdapter()
     repository = PostgresRepository(session=in_memory_db)
     stt_engine = MockSTTEngine()
     diarizer = MockDiarizer()

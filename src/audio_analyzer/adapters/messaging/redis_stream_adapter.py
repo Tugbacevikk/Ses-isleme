@@ -46,7 +46,7 @@ class RedisStreamAdapter:
         """Havuz üzerinden asenkron Redis istemcisi sağlar."""
         if self._custom_client is not None:
             return self._custom_client
-        pool = self.get_pool(self.redis_url)
+        pool = self.get_pool(self.redis_url or "redis://localhost:6379/0")
         return aioredis.Redis(connection_pool=pool)
 
     async def publish_job(
@@ -61,7 +61,7 @@ class RedisStreamAdapter:
         Non-blocking asenkron I/O kullanır.
         """
         client = self.get_client()
-        payload = {
+        payload: Dict[str, Any] = {
             "job_id": str(job_id),
             "file_name": str(file_name),
             "callback_url": str(callback_url) if callback_url else "",
@@ -113,7 +113,7 @@ class RedisStreamAdapter:
         Dönen format: [(msg_id, fields_dict), ...]
         """
         client = self.get_client()
-        response = await client.xreadgroup(
+        response: Any = await client.xreadgroup(
             groupname=self.group_name,
             consumername=consumer_name,
             streams={self.stream_key: ">"},
@@ -121,11 +121,18 @@ class RedisStreamAdapter:
             block=block_ms,
         )
 
-        messages = []
-        if response:
-            for stream_name, stream_messages in response:
-                for msg_id, fields in stream_messages:
-                    messages.append((str(msg_id), dict(fields)))
+        messages: List[Tuple[str, Dict[str, str]]] = []
+        if response and isinstance(response, list):
+            for stream_item in response:
+                if isinstance(stream_item, (tuple, list)) and len(stream_item) >= 2:
+                    stream_messages = stream_item[1]
+                    if isinstance(stream_messages, list):
+                        for item in stream_messages:
+                            if isinstance(item, (tuple, list)) and len(item) >= 2:
+                                msg_id = str(item[0])
+                                raw_fields = item[1]
+                                fields_dict = dict(raw_fields) if isinstance(raw_fields, dict) else {}
+                                messages.append((msg_id, fields_dict))
         return messages
 
     async def ack_message(self, message_id: str) -> int:

@@ -39,10 +39,12 @@ def test_in_memory_storage_adapter_crud():
 
 @pytest.mark.unit
 def test_in_memory_storage_adapter_fifo_limit():
+    InMemoryStorageAdapter._shared_buffer.clear()
     adapter = InMemoryStorageAdapter(max_items=2)
     uri1 = adapter.save(b"bytes1", "file1.wav")
     uri2 = adapter.save(b"bytes2", "file2.wav")
     uri3 = adapter.save(b"bytes3", "file3.wav")  # Limiti asar, uri1 FIFO ile silinmeli
+
 
     assert adapter.get_bytes(uri2) == b"bytes2"
     assert adapter.get_bytes(uri3) == b"bytes3"

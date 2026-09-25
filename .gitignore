@@ -42,8 +42,15 @@ htmlcov/
 .dist/
 build/
 
+# Rust Native Targets
+native/target/
+
+# Workflows
+.github/
+
 # IDE & System
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+

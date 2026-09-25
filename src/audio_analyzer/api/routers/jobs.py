@@ -44,7 +44,7 @@ async def verify_api_key(api_key: Optional[str] = Depends(api_key_header)):
 async def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
     """
     Arka plan asenkron worker fonksiyonu (Non-blocking HTTP 202 mimarisi).
-    Celery, RQ ve BackgroundTasks için merkezi JobService.execute_job iş mantığını çağırır.
+    Redis Streams veya FastAPI BackgroundTasks için merkezi JobService.execute_job iş mantığını çağırır.
     """
     try:
         record_uuid = uuid.UUID(job_id_str)
@@ -55,11 +55,6 @@ async def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: b
     except Exception as ex:
         logger.error("Background task execution error: %s", ex, exc_info=True)
 
-
-def run_pipeline_background_sync(job_id_str: str, file_name: str, file_bytes: bytes):
-    """Celery veya RQ gibi senkron worker'lar için asyncio sarmalayıcısı."""
-    import asyncio
-    return asyncio.run(run_pipeline_background(job_id_str, file_name, file_bytes))
 
 
 # --- Schemas ---
@@ -182,7 +177,6 @@ async def upload_and_analyze_audio(
     job_id = await job_service.create_job(file_name=file.filename, file_bytes=file_bytes, callback_url=callback_url)
 
     use_redis_stream = os.getenv("USE_REDIS_STREAM", "false").lower() == "true" or os.getenv("USE_REDIS_QUEUE", "false").lower() == "true"
-    use_celery = os.getenv("USE_CELERY", "false").lower() == "true"
 
     if use_redis_stream:
         try:
@@ -198,18 +192,9 @@ async def upload_and_analyze_audio(
             background_tasks.add_task(
                 run_pipeline_background, str(job_id), file.filename, file_bytes
             )
-    elif use_celery:
-        try:
-            from audio_analyzer.workers.tasks import process_audio_task
-
-            process_audio_task.delay(str(job_id))
-        except Exception as e:
-            logger.warning("Celery delay dispatch note: %s, falling back to BackgroundTasks", e)
-            background_tasks.add_task(
-                run_pipeline_background, str(job_id), file.filename, file_bytes
-            )
     else:
         background_tasks.add_task(run_pipeline_background, str(job_id), file.filename, file_bytes)
+
 
     return JobCreateResponse(
         job_id=str(job_id),

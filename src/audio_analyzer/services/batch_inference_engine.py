@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from typing import Any, Callable, List, Optional, Tuple, TypeVar
+from typing import Any, Callable, Generic, List, Optional, Tuple, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -9,7 +9,7 @@ T_In = TypeVar("T_In")
 T_Out = TypeVar("T_Out")
 
 
-class DynamicBatcher:
+class DynamicBatcher(Generic[T_In, T_Out]):
     """
     Çoklu İstemci / Worker Taleplerini Otomatik Gruplayan Asenkron Dinamik Batching Motoru (Dynamic Batching Engine).
     Eşzamanlı gelen tekil çıkarım taleplerini (single inference requests) 8'li, 16'lı veya 32'li gruplar (Batching)
@@ -25,9 +25,9 @@ class DynamicBatcher:
         self.batch_func = batch_func
         self.max_batch_size = int(os.getenv("MODEL_BATCH_SIZE", str(max_batch_size)))
         self.max_latency_sec = float(os.getenv("MODEL_BATCH_LATENCY_MS", str(max_latency_ms))) / 1000.0
-        self._queue: List[Tuple[T_In, asyncio.Future]] = []
+        self._queue: List[Tuple[T_In, asyncio.Future[T_Out]]] = []
         self._lock = asyncio.Lock()
-        self._batch_task: Optional[asyncio.Task] = None
+        self._batch_task: Optional[asyncio.Task[None]] = None
 
     async def submit(self, item: T_In) -> T_Out:
         """
@@ -68,7 +68,7 @@ class DynamicBatcher:
         except asyncio.CancelledError:
             pass
 
-    async def _process_batch(self, batch_items: List[Tuple[T_In, asyncio.Future]]):
+    async def _process_batch(self, batch_items: List[Tuple[T_In, asyncio.Future[T_Out]]]):
         inputs = [item for item, _ in batch_items]
         futures = [fut for _, fut in batch_items]
 

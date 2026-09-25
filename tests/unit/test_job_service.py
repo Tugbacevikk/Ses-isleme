@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
-from audio_analyzer.adapters.storage.local_storage_adapter import LocalStorageAdapter
+from audio_analyzer.adapters.storage.in_memory_storage_adapter import InMemoryStorageAdapter
 from audio_analyzer.domain.models import AudioRecord, JobStatus
 from audio_analyzer.services.job_service import JobService, sanitize_error_message
 
@@ -18,8 +18,8 @@ def test_sanitize_error_message_removes_file_paths():
     assert "FileNotFoundError" in sanitized
 
 
-async def test_execute_job_failure_does_not_leak_traceback(tmp_path, in_memory_db):
-    storage = LocalStorageAdapter(base_dir=str(tmp_path / "storage"))
+async def test_execute_job_failure_does_not_leak_traceback(in_memory_db):
+    storage = InMemoryStorageAdapter()
     repository = PostgresRepository(session=in_memory_db)
 
     # Pipeline that raises an error
@@ -44,8 +44,8 @@ async def test_execute_job_failure_does_not_leak_traceback(tmp_path, in_memory_d
     assert "RuntimeError" in record.error_message
 
 
-async def test_execute_job_triggers_webhook_callback(tmp_path, in_memory_db, monkeypatch):
-    storage = LocalStorageAdapter(base_dir=str(tmp_path / "storage"))
+async def test_execute_job_triggers_webhook_callback(in_memory_db, monkeypatch):
+    storage = InMemoryStorageAdapter()
     repository = PostgresRepository(session=in_memory_db)
 
     mock_pipeline = MagicMock()
@@ -63,5 +63,6 @@ async def test_execute_job_triggers_webhook_callback(tmp_path, in_memory_db, mon
     assert mock_send_callback.called
     assert mock_send_callback.call_args[0][0] == "https://example.com/webhook"
     assert mock_send_callback.call_args[0][1]["status"] == "COMPLETED"
+
 
 
