@@ -114,16 +114,24 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                     )
                 ]
 
-            # Dynamic Batching for SpeechBrain Embedding Extraction
+            # Dynamic Batching for SpeechBrain Embedding Extraction (8/16/32 Batch Slots)
             batch_size = int(os.getenv("DIARIZATION_BATCH_SIZE", "32"))
             raw_embeddings = []
+            device = self.device_config.device
+
             for b_idx in range(0, len(valid_clips), batch_size):
                 b_chunk = valid_clips[b_idx : b_idx + batch_size]
                 batch_arr = np.array(b_chunk, dtype=np.float32)
                 tensor_batch = torch.tensor(batch_arr, dtype=torch.float32)
 
                 with torch.no_grad():
-                    emb = self._classifier.encode_batch(tensor_batch)
+                    if device == "cuda" and torch.cuda.is_available():
+                        tensor_batch = tensor_batch.to("cuda")
+                        with torch.amp.autocast("cuda"):
+                            emb = self._classifier.encode_batch(tensor_batch)
+                    else:
+                        emb = self._classifier.encode_batch(tensor_batch)
+
                     emb_np = emb.squeeze(1).cpu().numpy()
                     if emb_np.ndim == 1:
                         emb_np = np.expand_dims(emb_np, axis=0)
