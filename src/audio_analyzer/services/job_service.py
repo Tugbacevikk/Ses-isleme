@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import uuid
@@ -100,15 +101,21 @@ class JobService:
                     except Exception as ex:
                         logger.warning("Dosya RAM'e okunamadı (%s), disk path'e düşülüyor: %s", local_audio_path, ex)
 
-            # RAM tabanlı 0-Disk I/O işleme (process_bytes) ile güvenli fallback
+            # RAM tabanlı 0-Disk I/O işleme (process_bytes) ile güvenli fallback (Non-blocking Thread)
             if file_bytes and hasattr(self.pipeline, "process_bytes"):
                 try:
-                    utterances, language, overlap_summary = self.pipeline.process_bytes(file_bytes)
+                    utterances, language, overlap_summary = await asyncio.to_thread(
+                        self.pipeline.process_bytes, file_bytes
+                    )
                 except Exception as p_err:
                     logger.warning("RAM (process_bytes) işleme uyarısı (%s), disk path yöntemine düşülüyor.", p_err)
-                    utterances, language, overlap_summary = self.pipeline.process(local_audio_path)
+                    utterances, language, overlap_summary = await asyncio.to_thread(
+                        self.pipeline.process, local_audio_path
+                    )
             else:
-                utterances, language, overlap_summary = self.pipeline.process(local_audio_path)
+                utterances, language, overlap_summary = await asyncio.to_thread(
+                    self.pipeline.process, local_audio_path
+                )
 
             # Başarılı ise sonuçları ve dili kaydet (COMPLETED)
             await self.repo.save_utterances(record_id, utterances, language=language)

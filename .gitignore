@@ -20,6 +20,8 @@ storage/cache/*
 storage/models/*
 !storage/models/.gitkeep
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
 
