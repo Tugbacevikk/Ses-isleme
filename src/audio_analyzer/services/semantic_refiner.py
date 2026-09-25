@@ -20,6 +20,9 @@ class SemanticRefiner:
         model_name: str = "llama3.2",
         custom_triggers: Optional[Dict[str, List[str]]] = None,
     ):
+        import os
+
+        domain_mode = domain_mode or os.getenv("DOMAIN_MODE")
         self.domain_mode = domain_mode
         self.use_llm = use_llm
         self.ollama_url = ollama_url
@@ -30,7 +33,7 @@ class SemanticRefiner:
         self.customer_triggers: List[str] = []
 
         # Yalnızca çağrı merkezi veya özel bir alan seçildiğinde kuralları yükle
-        if domain_mode == "call_center":
+        if self.domain_mode == "call_center":
             self.agent_triggers = [
                 "buyurun",
                 "müşteri hizmetleri",
@@ -113,8 +116,11 @@ class SemanticRefiner:
             else:
                 refined.append(utt)
 
-        # 3. Çağrı açılış selamlamasını kitle (Role Anchoring - ilk 12 saniyedeki açılış cümlelerini tek kart yap)
-        anchored_utterances = self._lock_opening_greetings(refined)
+        # 3. Yalnızca çağrı merkezi (call_center) modunda açılış selamlamasını kitle (Role Anchoring)
+        if self.domain_mode == "call_center":
+            anchored_utterances = self._lock_opening_greetings(refined)
+        else:
+            anchored_utterances = refined
 
         return self._normalize_short_gaps(anchored_utterances)
 
