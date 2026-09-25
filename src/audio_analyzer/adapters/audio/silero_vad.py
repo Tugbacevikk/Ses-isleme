@@ -34,8 +34,8 @@ class SileroVADProcessor(IVADProcessor):
                 )
                 self._model = model
             except Exception as e:
-                logger.warning(
-                    "Silero VAD model torch hub load note: %s. Using Energy VAD fallback.", e
+                logger.info(
+                    "Silero VAD torch hub note: %s. Energy VAD kullanılıyor.", e
                 )
                 self._model = "ENERGY_FALLBACK"
 

@@ -44,7 +44,7 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                     run_opts={"device": self.device_config.device},
                 )
             except Exception as ex:
-                logger.warning("SpeechBrain loading note (%s), retrying without explicit savedir...", ex)
+                logger.info("SpeechBrain önbellek yükleme notu: %s", ex)
                 self._classifier = EncoderClassifier.from_hparams(
                     source="speechbrain/spkrec-ecapa-voxceleb",
                     run_opts={"device": self.device_config.device},
