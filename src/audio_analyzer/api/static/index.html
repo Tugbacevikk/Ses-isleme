@@ -553,6 +553,11 @@
             const container = document.getElementById('toastContainer');
             if (!container) return;
 
+            // Maksimum 2 bildirim göster (ekranda üst üste yığılmayı önle)
+            while (container.children.length >= 2) {
+                container.firstElementChild.remove();
+            }
+
             const toast = document.createElement('div');
             toast.className = `toast toast-${type}`;
 
@@ -577,7 +582,7 @@
             setTimeout(() => {
                 toast.style.animation = 'toastFadeOut 0.3s forwards';
                 setTimeout(() => toast.remove(), 300);
-            }, 4500);
+            }, 3000);
         }
 
         function showConfirmModal(title, message, onConfirm) {
