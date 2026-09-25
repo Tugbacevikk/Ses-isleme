@@ -181,21 +181,20 @@ async def upload_and_analyze_audio(
     job_service = JobService(storage=storage, repository=repository)
     job_id = await job_service.create_job(file_name=file.filename, file_bytes=file_bytes, callback_url=callback_url)
 
-    use_redis_queue = os.getenv("USE_REDIS_QUEUE", "false").lower() == "true"
+    use_redis_stream = os.getenv("USE_REDIS_STREAM", "false").lower() == "true" or os.getenv("USE_REDIS_QUEUE", "false").lower() == "true"
     use_celery = os.getenv("USE_CELERY", "false").lower() == "true"
 
-    if use_redis_queue:
+    if use_redis_stream:
         try:
-            from redis import Redis
-            from rq import Queue
+            from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAdapter
 
-            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-            redis_conn = Redis.from_url(redis_url)
-            q = Queue("audio_tasks", connection=redis_conn)
-            q.enqueue(run_pipeline_background_sync, str(job_id), file.filename, file_bytes)
-            logger.info("Görüşme görevi %s başarıyla Redis Queue (RQ) kuyruğuna fırlatıldı.", job_id)
+            stream_adapter = RedisStreamAdapter()
+            await stream_adapter.publish_job(
+                job_id=str(job_id), file_name=file.filename, callback_url=callback_url
+            )
+            logger.info("Görüşme görevi %s başarıyla Redis Stream (XADD) akışına fırlatıldı.", job_id)
         except Exception as e:
-            logger.warning("Redis Queue fırlatma uyarısı (%s), yerel BackgroundTasks'e düşülüyor", e)
+            logger.warning("Redis Stream fırlatma uyarısı (%s), yerel BackgroundTasks'e düşülüyor", e)
             background_tasks.add_task(
                 run_pipeline_background, str(job_id), file.filename, file_bytes
             )
