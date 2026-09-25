@@ -57,12 +57,17 @@ sesAnalizi/
 │   │   ├── pipeline_factory.py    # Yapay zeka modellerini bellekte tek bir sefer yükleyen (Singleton) fabrika
 │   │   ├── fusion_engine.py       # Kelimeler ile konuşmacı zaman aralıklarını IoU/Midpoint ile çakıştıran motor
 │   │   ├── semantic_refiner.py    # Rol geçiş ifadelerine göre konuşmacı kartlarını anlamsal olarak bölen modül
+│   │   ├── batch_inference_engine.py # Toplu ses analizi ve GPU dinamik batchleme motoru
 │   │   ├── job_service.py         # Analiz görevlerinin veritabanı durumunu yöneten ve hataları maskeleyen servis
 │   │   ├── overlap_detector.py    # Çakışan konuşma süresini ve kesinti sayısını hesaplayan modül
 │   │   └── webhook_service.py     # HMAC-SHA256 imzalı asenkron callback/webhook bildirim servisi
 │   │
 │   ├── adapters/                  # Dış kütüphaneler, AI modelleri ve veritabanı bağlayıcıları
+│   │   ├── stt/
+│   │   │   └── faster_whisper_adapter.py # Faster-Whisper GPU/CPU Speech-to-Text motoru adaptörü
 │   │   ├── audio/
+│   │   │   ├── audio_converter.py # FFmpeg/SoundFile ile ses formatı dönüştürme adaptörü
+│   │   │   ├── rust_dsp_adapter.py# C/Rust yerel DSP ivmelendirici modül adaptörü
 │   │   │   ├── silero_vad.py      # Silero / Energy VAD konuşma algılama adaptörü
 │   │   │   └── denoiser.py        # DeepFilterNet / spectral arka plan gürültü temizleme adaptörü
 │   │   ├── diarization/
@@ -73,7 +78,8 @@ sesAnalizi/
 │   │   │   ├── postgres_repository.py # Async SQLAlchemy PostgreSQL veritabanı CRUD işlemleri
 │   │   │   └── unit_of_work.py    # Veritabanı işlemlerini güvenli paketleyen (Transaction) sınıf
 │   │   ├── storage/
-│   │   │   ├── ram_storage_adapter.py # Ses baytlarını diske yazmadan bellekte tutan 0-Disk RAM adaptörü
+│   │   │   ├── in_memory_storage_adapter.py # Ses baytlarını diske yazmadan bellekte tutan 0-Disk RAM adaptörü
+│   │   │   ├── ram_storage_adapter.py # RAM depolama adaptörü arayüz bağlayıcısı
 │   │   │   ├── s3_storage_adapter.py  # AWS S3 / MinIO bulut depolama adaptörü
 │   │   │   └── storage_factory.py     # RAM veya S3 deposunu seçen fabrika
 │   │   └── messaging/
