@@ -45,3 +45,20 @@ def test_postgres_repository_crud_flow(in_memory_db):
     assert final_record.language == "tr"
     assert len(final_record.utterances) == 1
     assert final_record.utterances[0].text == "Merhaba dunya"
+
+
+@pytest.mark.integration
+def test_init_engine_fallback_behavior(monkeypatch):
+    from audio_analyzer.api.dependencies import init_engine
+
+    # 1. ALLOW_SQLITE_FALLBACK=false iken hata fırlatılmalı (Loud Fail)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://invalid_user:invalid_pass@localhost:9999/non_existent_db")
+    monkeypatch.setenv("ALLOW_SQLITE_FALLBACK", "false")
+
+    with pytest.raises(Exception):
+        init_engine()
+
+    # 2. ALLOW_SQLITE_FALLBACK=true iken SQLite fallback yapılmalı
+    monkeypatch.setenv("ALLOW_SQLITE_FALLBACK", "true")
+    fallback_engine = init_engine()
+    assert "sqlite" in str(fallback_engine.url)

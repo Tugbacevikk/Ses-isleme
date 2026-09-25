@@ -45,22 +45,35 @@ def create_db_engine(db_url: str):
         )
 
 
-try:
-    engine = create_db_engine(DATABASE_URL)
-    # Tabloları otomatik kontrol et/oluştur
-    from audio_analyzer.adapters.repository.models import Base
+def init_engine():
+    db_url = os.getenv("DATABASE_URL", "sqlite:///storage/dev_database.db")
+    try:
+        eng = create_db_engine(db_url)
+        # PostgreSQL için bağlantıyı hemen test et
+        if not db_url.startswith("sqlite"):
+            from sqlalchemy import text
+            with eng.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        return eng
+    except Exception as e:
+        allow_fallback = os.getenv("ALLOW_SQLITE_FALLBACK", "false").lower() == "true"
+        if allow_fallback and not db_url.startswith("sqlite"):
+            fallback_url = "sqlite:///storage/dev_database.db"
+            logger.warning(
+                "PostgreSQL bağlantı hatası (%s). ALLOW_SQLITE_FALLBACK=true olduğu için yerel SQLite (%s) tamponuna geçiliyor.",
+                e,
+                fallback_url,
+            )
+            return create_db_engine(fallback_url)
+        else:
+            logger.error(
+                "Veritabanı bağlantı hatası (%s). ALLOW_SQLITE_FALLBACK=false olduğu için uygulama durduruluyor (Loud Fail / Anti-Split-Brain).",
+                e,
+            )
+            raise e
 
-    Base.metadata.create_all(engine)
-except Exception as e:
-    fallback_url = "sqlite:///storage/dev_database.db"
-    logger.warning(
-        "PostgreSQL bağlantı hatası (%s). Yerel SQLite (%s) tamponuna geçiliyor.", e, fallback_url
-    )
-    engine = create_db_engine(fallback_url)
-    from audio_analyzer.adapters.repository.models import Base
 
-    Base.metadata.create_all(engine)
-
+engine = init_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
