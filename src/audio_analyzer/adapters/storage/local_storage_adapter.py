@@ -30,6 +30,11 @@ class LocalStorageAdapter(IAudioStorage):
             return storage_uri.replace("file:///", "")
         return storage_uri
 
+    def get_bytes(self, storage_uri: str) -> bytes:
+        path_str = self.get_path(storage_uri)
+        with open(path_str, "rb") as f:
+            return f.read()
+
     def delete(self, storage_uri: str) -> bool:
         path_str = self.get_path(storage_uri)
         file_path = Path(path_str)

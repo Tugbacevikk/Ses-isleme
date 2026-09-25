@@ -85,13 +85,20 @@ class JobService:
 
                 self.pipeline = get_shared_pipeline()
 
-            # file_bytes verilmemişse (Celery gibi dış worker'larda) diski belleğe oku
-            if not file_bytes and os.path.exists(local_audio_path):
-                try:
-                    with open(local_audio_path, "rb") as f:
-                        file_bytes = f.read()
-                except Exception as ex:
-                    logger.warning("Dosya RAM'e okunamadı (%s), disk path'e düşülüyor: %s", local_audio_path, ex)
+            # file_bytes verilmemişse storage (RAM/S3) veya diskten RAM'e oku
+            if not file_bytes:
+                if hasattr(self.storage, "get_bytes"):
+                    try:
+                        file_bytes = self.storage.get_bytes(record.storage_uri)
+                    except Exception as ex:
+                        logger.warning("Storage'dan RAM baytları okunamadı (%s): %s", record.storage_uri, ex)
+
+                if not file_bytes and os.path.exists(local_audio_path):
+                    try:
+                        with open(local_audio_path, "rb") as f:
+                            file_bytes = f.read()
+                    except Exception as ex:
+                        logger.warning("Dosya RAM'e okunamadı (%s), disk path'e düşülüyor: %s", local_audio_path, ex)
 
             # RAM tabanlı 0-Disk I/O işleme (process_bytes) ile güvenli fallback
             if file_bytes and hasattr(self.pipeline, "process_bytes"):

@@ -12,7 +12,7 @@ from audio_analyzer.domain.models import (
 
 
 class IAudioStorage(ABC):
-    """Nesne Depolama (Object Storage / Local FS) Soyut Arayüzü."""
+    """Nesne Depolama (Object Storage / Local FS / RAM Buffer) Soyut Arayüzü."""
 
     @abstractmethod
     def save(self, file_bytes: bytes, file_name: str) -> str:
@@ -22,6 +22,11 @@ class IAudioStorage(ABC):
     @abstractmethod
     def get_path(self, storage_uri: str) -> str:
         """storage_uri'den yerel erişilebilir dosya yolunu döner."""
+        pass
+
+    @abstractmethod
+    def get_bytes(self, storage_uri: str) -> bytes:
+        """storage_uri'den ses verisini fiziksel diske yazmadan doğrudan RAM bayt akışı olarak döner."""
         pass
 
     @abstractmethod

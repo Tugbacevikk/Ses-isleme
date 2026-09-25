@@ -83,6 +83,22 @@ class S3StorageAdapter(IAudioStorage):
 
         return str(local_path.absolute())
 
+    def get_bytes(self, storage_uri: str) -> bytes:
+        """
+        s3://bucket/key URI'sini doğrudan S3/MinIO RAM bellek tamponuna aktarır.
+        Fiziksel diske hiç yazmadan 0-Disk I/O ile RAM'e yükler.
+        """
+        if not storage_uri.startswith("s3://"):
+            raise ValueError(f"Geçersiz S3 URI formatı: {storage_uri}")
+
+        parts = storage_uri.replace("s3://", "").split("/", 1)
+        bucket = parts[0]
+        object_key = parts[1] if len(parts) > 1 else ""
+
+        client = self._get_client()
+        response = client.get_object(Bucket=bucket, Key=object_key)
+        return response["Body"].read()
+
     def delete(self, storage_uri: str) -> bool:
         if not storage_uri.startswith("s3://"):
             return False
