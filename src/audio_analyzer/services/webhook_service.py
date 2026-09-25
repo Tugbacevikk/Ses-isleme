@@ -92,6 +92,17 @@ class WebhookService:
         )
         return False
 
+    _async_client = None
+
+    @classmethod
+    def get_async_client(cls):
+        if cls._async_client is None:
+            import httpx
+
+            limits = httpx.Limits(max_keepalive_connections=200, max_connections=1000)
+            cls._async_client = httpx.AsyncClient(timeout=10.0, limits=limits)
+        return cls._async_client
+
     async def send_callback_async(
         self,
         callback_url: str,
@@ -116,19 +127,18 @@ class WebhookService:
         }
 
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                for attempt in range(1, max_retries + 1):
-                    try:
-                        resp = await client.post(callback_url, content=payload_bytes, headers=headers)
-                        if 200 <= resp.status_code < 300:
-                            logger.info("Async Webhook callback delivered to %s (%d)", callback_url, resp.status_code)
-                            return True
-                    except Exception as ex:
-                        logger.warning("Async Webhook attempt %d/%d failed for %s: %s", attempt, max_retries, callback_url, ex)
+            client = self.get_async_client()
+            for attempt in range(1, max_retries + 1):
+                try:
+                    resp = await client.post(callback_url, content=payload_bytes, headers=headers)
+                    if 200 <= resp.status_code < 300:
+                        logger.info("Async Webhook callback delivered to %s (%d)", callback_url, resp.status_code)
+                        return True
+                except Exception as ex:
+                    logger.warning("Async Webhook attempt %d/%d failed for %s: %s", attempt, max_retries, callback_url, ex)
 
-                    if attempt < max_retries:
-                        await asyncio.sleep(backoff_factor * (2 ** (attempt - 1)))
+                if attempt < max_retries:
+                    await asyncio.sleep(backoff_factor * (2 ** (attempt - 1)))
         except ImportError:
             # Fallback to sync delivery if httpx is not installed
             return self.send_callback(callback_url, payload, max_retries, backoff_factor)
