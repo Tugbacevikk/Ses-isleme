@@ -1,7 +1,11 @@
 import logging
 import os
+import warnings
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+# Windows SYMLINK ve SpeechBrain önbellek uyarılarını bastır
+warnings.filterwarnings("ignore", category=UserWarning)
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Response
@@ -20,7 +24,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logging.getLogger("speechbrain").setLevel(logging.WARNING)
+logging.getLogger("speechbrain").setLevel(logging.ERROR)
+logging.getLogger("speechbrain.utils.fetching").setLevel(logging.ERROR)
+logging.getLogger("speechbrain.utils.parameter_transfer").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
