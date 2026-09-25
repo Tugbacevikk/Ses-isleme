@@ -31,6 +31,13 @@ class SpeechBrainECAPADiarizer(IDiarizer):
 
     def _load_classifier(self):
         if self._classifier is None:
+            import warnings
+            warnings.filterwarnings("ignore")
+            logging.getLogger("speechbrain").setLevel(logging.ERROR)
+            logging.getLogger("speechbrain.utils.fetching").setLevel(logging.ERROR)
+            logging.getLogger("speechbrain.utils.parameter_transfer").setLevel(logging.ERROR)
+            logging.getLogger("speechbrain.utils.quirks").setLevel(logging.ERROR)
+
             from speechbrain.inference.speaker import EncoderClassifier
             from pathlib import Path
 
@@ -44,7 +51,7 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                     run_opts={"device": self.device_config.device},
                 )
             except Exception as ex:
-                logger.info("SpeechBrain önbellek yükleme notu: %s", ex)
+                logger.debug("SpeechBrain önbellek yükleme notu: %s", ex)
                 self._classifier = EncoderClassifier.from_hparams(
                     source="speechbrain/spkrec-ecapa-voxceleb",
                     run_opts={"device": self.device_config.device},
