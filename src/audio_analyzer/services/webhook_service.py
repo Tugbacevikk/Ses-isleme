@@ -70,71 +70,27 @@ class WebhookService:
     ) -> bool:
         """
         Hedef callback_url adresine JSON formatında HTTP POST isteği atar.
-        httpx TCP keep-alive bağlantı havuzu (connection pool) kullanır.
+        Senkron çağıran fonksiyonları asenkron httpx keep-alive havuz metoduna bağlar.
         """
         if not callback_url:
             return False
 
-        payload_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        signature = self.generate_signature(payload_bytes)
+        import asyncio
 
-        headers = {
-            "Content-Type": "application/json; charset=utf-8",
-            "User-Agent": "Antigravity-Audio-Analyzer-Webhook/1.0",
-            "X-Signature": signature,
-        }
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
 
-        client = self.get_sync_client()
-
-        for attempt in range(1, max_retries + 1):
-            try:
-                if client is not None:
-                    resp = client.post(callback_url, content=payload_bytes, headers=headers)
-                    if 200 <= resp.status_code < 300:
-                        logger.info(
-                            "Webhook callback successfully delivered to %s (status: %d)",
-                            callback_url,
-                            resp.status_code,
-                        )
-                        return True
-                    else:
-                        logger.warning(
-                            "Webhook callback returned non-2xx status (%d) for %s",
-                            resp.status_code,
-                            callback_url,
-                        )
-                else:
-                    # Fallback to urllib
-                    req = urllib.request.Request(
-                        callback_url, data=payload_bytes, headers=headers, method="POST"
-                    )
-                    with urllib.request.urlopen(req, timeout=10) as response:
-                        if 200 <= response.status < 300:
-                            logger.info(
-                                "Webhook callback successfully delivered via urllib to %s (%d)",
-                                callback_url,
-                                response.status,
-                            )
-                            return True
-            except Exception as ex:
-                logger.warning(
-                    "Webhook callback attempt %d/%d failed for %s: %s",
-                    attempt,
-                    max_retries,
-                    callback_url,
-                    ex,
-                )
-
-            if attempt < max_retries:
-                sleep_time = backoff_factor * (2 ** (attempt - 1))
-                time.sleep(sleep_time)
-
-        logger.error(
-            "Webhook callback permanently failed for %s after %d retries.",
-            callback_url,
-            max_retries,
-        )
-        return False
+        if loop and loop.is_running():
+            loop.create_task(
+                self.send_callback_async(callback_url, payload, max_retries, backoff_factor)
+            )
+            return True
+        else:
+            return asyncio.run(
+                self.send_callback_async(callback_url, payload, max_retries, backoff_factor)
+            )
 
     async def send_callback_async(
         self,
