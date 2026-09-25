@@ -119,7 +119,9 @@ class SpeechBrainECAPADiarizer(IDiarizer):
             raw_embeddings = []
             device = self.device_config.device
 
+            logger.info("SpeechBrain ECAPA Konuşmacı Ayrıştırma başlatılıyor (%d pencere segmenti işleniyor)...", len(valid_clips))
             for b_idx in range(0, len(valid_clips), batch_size):
+
                 b_chunk = valid_clips[b_idx : b_idx + batch_size]
                 batch_arr = np.array(b_chunk, dtype=np.float32)
                 tensor_batch = torch.tensor(batch_arr, dtype=torch.float32)
