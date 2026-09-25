@@ -203,4 +203,4 @@ def test_full_audio_analysis_pipeline_e2e(mock_storage, in_memory_repository, mo
 - Celery worker görevlerinin entegre edilmesi ve `tests/system/test_full_pipeline.py` E2E sistem testinin çalıştırılması.
 
 ### Adım 6: Rust Performans Katmanı
-- Ses ön işleme adımlarının Rust (`PyO3`) ile hızlandırılması.
+- Ses ön işleme adımlarının Rust (`PyO3`) ile hızlandırılması.m

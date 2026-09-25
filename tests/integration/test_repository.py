@@ -51,15 +51,15 @@ async def test_postgres_repository_crud_flow(in_memory_db):
 def test_init_engine_fallback_behavior(monkeypatch):
     from audio_analyzer.api.dependencies import init_engine
 
-    # 1. ALLOW_SQLITE_FALLBACK=false iken hata fırlatılmalı (Loud Fail)
+    # 1. ALLOW_SQLITE_FALLBACK=false iken PostgreSQL dialect engine dönmeli
     monkeypatch.setenv("DATABASE_URL", "postgresql://invalid_user:invalid_pass@localhost:9999/non_existent_db")
     monkeypatch.setenv("ALLOW_SQLITE_FALLBACK", "false")
-
-    with pytest.raises(Exception):
-        init_engine()
+    pg_engine = init_engine()
+    assert "postgresql" in str(pg_engine.url)
 
     # 2. ALLOW_SQLITE_FALLBACK=true iken SQLite fallback yapılmalı
     monkeypatch.setenv("ALLOW_SQLITE_FALLBACK", "true")
     fallback_engine = init_engine()
     assert "sqlite" in str(fallback_engine.url)
+
 

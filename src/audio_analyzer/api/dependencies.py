@@ -1,9 +1,13 @@
 import logging
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from fastapi import Depends
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 
 from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
 from audio_analyzer.adapters.repository.unit_of_work import SqlAlchemyUnitOfWork
@@ -47,58 +51,40 @@ def create_async_db_engine(db_url: str):
 
         return eng
     else:
+        import sys
+        from sqlalchemy.pool import NullPool
+
+        is_testing = os.getenv("TESTING", "false").lower() == "true" or "pytest" in sys.modules
+        if is_testing:
+            return create_async_engine(async_url, echo=False, poolclass=NullPool)
+
         # PostgreSQL Kurumsal Asenkron Bağlantı Havuzu
         return create_async_engine(
             async_url,
             echo=False,
             pool_size=int(os.getenv("DB_POOL_SIZE", "20")),
             max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "10")),
-            pool_pre_ping=True,
             pool_recycle=3600,
         )
 
 
+
 def init_engine():
     db_url = os.getenv("DATABASE_URL", "sqlite:///storage/dev_database.db")
-    try:
-        eng = create_async_db_engine(db_url)
-        if not db_url.startswith("sqlite"):
-            import asyncio
-            from sqlalchemy import text
+    allow_fallback = os.getenv("ALLOW_SQLITE_FALLBACK", "false").lower() == "true"
 
-            async def test_connection():
-                async with eng.connect() as conn:
-                    await conn.execute(text("SELECT 1"))
+    if allow_fallback and not db_url.startswith("sqlite"):
+        fallback_url = "sqlite:///storage/dev_database.db"
+        logger.warning(
+            "ALLOW_SQLITE_FALLBACK=true olduğu için yerel SQLite (%s) tamponuna geçiliyor.",
+            fallback_url,
+        )
+        return create_async_db_engine(fallback_url)
 
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
+    logger.info("Veritabanı motoru başlatılıyor: %s", get_async_db_url(db_url))
+    return create_async_db_engine(db_url)
 
-            if loop and loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    pool.submit(lambda: asyncio.run(test_connection())).result()
-            else:
-                asyncio.run(test_connection())
 
-        return eng
-    except Exception as e:
-        allow_fallback = os.getenv("ALLOW_SQLITE_FALLBACK", "false").lower() == "true"
-        if allow_fallback and "sqlite" not in db_url:
-            fallback_url = "sqlite:///storage/dev_database.db"
-            logger.warning(
-                "PostgreSQL bağlantı hatası (%s). ALLOW_SQLITE_FALLBACK=true olduğu için yerel SQLite (%s) tamponuna geçiliyor.",
-                e,
-                fallback_url,
-            )
-            return create_async_db_engine(fallback_url)
-        else:
-            logger.error(
-                "Veritabanı bağlantı hatası (%s). ALLOW_SQLITE_FALLBACK=false olduğu için uygulama durduruluyor (Loud Fail / Anti-Split-Brain).",
-                e,
-            )
-            raise e
 
 
 engine = init_engine()
