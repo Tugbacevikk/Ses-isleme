@@ -215,19 +215,20 @@ class SemanticRefiner:
         text = utt.text.strip()
         text_lower = text.lower()
 
-        found_agent_trigger = None
-        agent_idx = -1
+        all_triggers = self.agent_triggers + self.customer_triggers
+        found_trigger = None
+        split_idx = -1
 
-        for trg in self.agent_triggers:
+        for trg in all_triggers:
             idx = text_lower.find(trg)
-            if idx >= 15:
-                agent_idx = idx
-                found_agent_trigger = trg
+            if idx >= 10:
+                split_idx = idx
+                found_trigger = trg
                 break
 
-        if agent_idx > 0 and found_agent_trigger:
-            part1 = text[:agent_idx].strip()
-            part2 = text[agent_idx:].strip()
+        if split_idx > 0 and found_trigger:
+            part1 = text[:split_idx].strip()
+            part2 = text[split_idx:].strip()
 
             if part1 and part2:
                 total_len = len(text)

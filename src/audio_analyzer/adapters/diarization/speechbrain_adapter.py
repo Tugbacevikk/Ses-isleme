@@ -83,7 +83,7 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                 sr = target_sr
 
             win_sec = 1.2
-            step_sec = float(os.getenv("DIARIZATION_STEP_SEC", "0.6"))
+            step_sec = float(os.getenv("DIARIZATION_STEP_SEC", "0.5"))
             win_samples = int(sr * win_sec)
             step_samples = int(sr * step_sec)
 
@@ -150,7 +150,7 @@ class SpeechBrainECAPADiarizer(IDiarizer):
             norms = np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8
             unit_embs = embeddings / norms
 
-            dist_thresh = float(os.getenv("DIARIZATION_THRESHOLD", "0.55"))
+            dist_thresh = float(os.getenv("DIARIZATION_THRESHOLD", "0.42"))
 
             if len(unit_embs) == 1:
                 raw_valid_labels = np.zeros(1, dtype=int)
