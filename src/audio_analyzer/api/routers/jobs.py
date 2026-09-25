@@ -205,8 +205,25 @@ async def upload_and_analyze_audio(
     job_service = JobService(storage=storage, repository=repository)
     job_id = job_service.create_job(file_name=file.filename, file_bytes=file_bytes, callback_url=callback_url)
 
+    use_redis_queue = os.getenv("USE_REDIS_QUEUE", "false").lower() == "true"
     use_celery = os.getenv("USE_CELERY", "false").lower() == "true"
-    if use_celery:
+
+    if use_redis_queue:
+        try:
+            from redis import Redis
+            from rq import Queue
+
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+            redis_conn = Redis.from_url(redis_url)
+            q = Queue("audio_tasks", connection=redis_conn)
+            q.enqueue(run_pipeline_background, str(job_id), file.filename, file_bytes)
+            logger.info("Görüşme görevi %s başarıyla Redis Queue (RQ) kuyruğuna fırlatıldı.", job_id)
+        except Exception as e:
+            logger.warning("Redis Queue fırlatma uyarısı (%s), yerel BackgroundTasks'e düşülüyor", e)
+            background_tasks.add_task(
+                run_pipeline_background, str(job_id), file.filename, file_bytes
+            )
+    elif use_celery:
         try:
             from audio_analyzer.workers.tasks import process_audio_task
 
