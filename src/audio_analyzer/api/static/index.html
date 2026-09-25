@@ -728,6 +728,14 @@
             const interval = setInterval(async () => {
                 try {
                     const res = await fetch(`/api/v1/jobs/${jobId}`);
+                    if (!res.ok) {
+                        clearInterval(interval);
+                        statusContainer.style.display = 'none';
+                        if (res.status === 404) {
+                            showToast('Analiz görevi bulunamadı (404).', 'error', 'Kayıt Bulunamadı');
+                        }
+                        return;
+                    }
                     const job = await res.json();
 
                     if (job.status === 'COMPLETED') {
@@ -735,6 +743,7 @@
                         statusContainer.style.display = 'none';
                         showToast('Ses analizi başarıyla tamamlandı.', 'success');
                         renderResults(job);
+                        if (typeof loadHistory === 'function') loadHistory();
                     } else if (job.status === 'FAILED') {
                         clearInterval(interval);
                         statusContainer.style.display = 'none';
@@ -745,6 +754,7 @@
                 }
             }, 1000);
         }
+
 
         let currentJobId = null;
         let currentJobData = null;
