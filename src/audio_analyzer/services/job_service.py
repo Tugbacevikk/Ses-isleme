@@ -75,16 +75,31 @@ class JobService:
         self.repo.update_status(record_id, JobStatus.PROCESSING)
 
         try:
+            import os
+
             local_audio_path = self.storage.get_path(record.storage_uri)
 
-            # Pipeline çalıştır
+            # Pipeline çalıştır (Sıcak Yüklenmiş Singleton)
             if self.pipeline is None:
                 from audio_analyzer.services.pipeline_factory import get_shared_pipeline
 
                 self.pipeline = get_shared_pipeline()
 
+            # file_bytes verilmemişse (Celery gibi dış worker'larda) diski belleğe oku
+            if not file_bytes and os.path.exists(local_audio_path):
+                try:
+                    with open(local_audio_path, "rb") as f:
+                        file_bytes = f.read()
+                except Exception as ex:
+                    logger.warning("Dosya RAM'e okunamadı (%s), disk path'e düşülüyor: %s", local_audio_path, ex)
+
+            # RAM tabanlı 0-Disk I/O işleme (process_bytes) ile güvenli fallback
             if file_bytes and hasattr(self.pipeline, "process_bytes"):
-                utterances, language, overlap_summary = self.pipeline.process_bytes(file_bytes)
+                try:
+                    utterances, language, overlap_summary = self.pipeline.process_bytes(file_bytes)
+                except Exception as p_err:
+                    logger.warning("RAM (process_bytes) işleme uyarısı (%s), disk path yöntemine düşülüyor.", p_err)
+                    utterances, language, overlap_summary = self.pipeline.process(local_audio_path)
             else:
                 utterances, language, overlap_summary = self.pipeline.process(local_audio_path)
 
