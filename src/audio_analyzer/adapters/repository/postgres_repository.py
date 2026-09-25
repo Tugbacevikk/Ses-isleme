@@ -1,42 +1,46 @@
 import uuid
 from typing import List, Optional
 
-from sqlalchemy.orm import Session
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from audio_analyzer.adapters.repository.models import AudioRecordModel, TranscriptUtteranceModel
 from audio_analyzer.domain.interfaces import ITranscriptRepository
 from audio_analyzer.domain.models import AudioRecord, JobStatus, TranscriptUtterance
-
 
 import time
 from sqlalchemy.exc import OperationalError
 
 class PostgresRepository(ITranscriptRepository):
     """
-    SQLAlchemy ile PostgreSQL / SQLite veritabanı adaptörü.
+    SQLAlchemy ile PostgreSQL (asyncpg) / SQLite (aiosqlite) asenkron veritabanı adaptörü.
     Clean Architecture gereği ORM nesneleri ile Domain modelleri arasında dönüşüm yapar.
+    FastAPI event loop'unu bloklamayan %100 non-blocking asenkron okuma/yazma yürütür.
     """
 
-    def __init__(self, session: Session, autocommit: bool = True):
+    def __init__(self, session: AsyncSession, autocommit: bool = True):
         self.session = session
         self.autocommit = autocommit
 
-    def _commit_or_flush(self):
+    async def _commit_or_flush(self):
         max_retries = 5
         for attempt in range(max_retries):
             try:
                 if self.autocommit:
-                    self.session.commit()
+                    await self.session.commit()
                 else:
-                    self.session.flush()
+                    await self.session.flush()
                 break
             except OperationalError as ex:
                 if "locked" in str(ex).lower() and attempt < max_retries - 1:
-                    time.sleep(0.2 * (attempt + 1))
+                    import asyncio
+
+                    await asyncio.sleep(0.2 * (attempt + 1))
                 else:
                     raise
 
-    def save_record(self, record: AudioRecord) -> AudioRecord:
+    async def save_record(self, record: AudioRecord) -> AudioRecord:
         orm_model = AudioRecordModel(
             id=record.id,
             storage_uri=record.storage_uri,
@@ -53,25 +57,27 @@ class PostgresRepository(ITranscriptRepository):
             updated_at=record.updated_at,
         )
         self.session.add(orm_model)
-        self._commit_or_flush()
-        if self.autocommit:
-            self.session.refresh(orm_model)
+        await self._commit_or_flush()
         return self._to_domain(orm_model)
 
-    def get_record_by_id(self, record_id: uuid.UUID) -> Optional[AudioRecord]:
-        orm_model = (
-            self.session.query(AudioRecordModel).filter(AudioRecordModel.id == record_id).first()
+    async def get_record_by_id(self, record_id: uuid.UUID) -> Optional[AudioRecord]:
+        stmt = (
+            select(AudioRecordModel)
+            .where(AudioRecordModel.id == record_id)
+            .options(selectinload(AudioRecordModel.utterances))
         )
+        res = await self.session.execute(stmt)
+        orm_model = res.scalar_one_or_none()
         if not orm_model:
             return None
         return self._to_domain(orm_model)
 
-    def update_status(
+    async def update_status(
         self, record_id: uuid.UUID, status: JobStatus, error_message: Optional[str] = None
     ) -> bool:
-        orm_model = (
-            self.session.query(AudioRecordModel).filter(AudioRecordModel.id == record_id).first()
-        )
+        stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
+        res = await self.session.execute(stmt)
+        orm_model = res.scalar_one_or_none()
         if not orm_model:
             return False
 
@@ -79,22 +85,21 @@ class PostgresRepository(ITranscriptRepository):
         if error_message is not None:
             orm_model.error_message = error_message
 
-        self._commit_or_flush()
+        await self._commit_or_flush()
         return True
 
-    def save_utterances(
+    async def save_utterances(
         self,
         record_id: uuid.UUID,
         utterances: List[TranscriptUtterance],
         language: Optional[str] = None,
     ) -> bool:
-        orm_model = (
-            self.session.query(AudioRecordModel).filter(AudioRecordModel.id == record_id).first()
-        )
+        stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
+        res = await self.session.execute(stmt)
+        orm_model = res.scalar_one_or_none()
         if not orm_model:
             return False
 
-        # Toplu Cümle Kaydı (Bulk Insert Optimization)
         if utterances:
             u_models = [
                 TranscriptUtteranceModel(
@@ -114,68 +119,56 @@ class PostgresRepository(ITranscriptRepository):
         if language:
             orm_model.language = language
 
-        self._commit_or_flush()
+        await self._commit_or_flush()
         return True
 
-    def update_utterance(
+    async def update_utterance(
         self, record_id: uuid.UUID, utterance_index: int, speaker_id: str, text: str
     ) -> bool:
-        orm_utterances = (
-            self.session.query(TranscriptUtteranceModel)
-            .filter(TranscriptUtteranceModel.audio_record_id == record_id)
+        stmt = (
+            select(TranscriptUtteranceModel)
+            .where(TranscriptUtteranceModel.audio_record_id == record_id)
             .order_by(
                 TranscriptUtteranceModel.start_time.asc(),
                 TranscriptUtteranceModel.created_at.asc(),
                 TranscriptUtteranceModel.id.asc(),
             )
-            .all()
         )
+        res = await self.session.execute(stmt)
+        orm_utterances = list(res.scalars().all())
+
         if not orm_utterances or utterance_index < 0 or utterance_index >= len(orm_utterances):
             return False
 
         orm_utterances[utterance_index].speaker_id = speaker_id
         orm_utterances[utterance_index].text = text
-        self._commit_or_flush()
+        await self._commit_or_flush()
         return True
 
-    def delete_utterance(self, record_id: uuid.UUID, utterance_index: int) -> bool:
-        orm_utterances = (
-            self.session.query(TranscriptUtteranceModel)
-            .filter(TranscriptUtteranceModel.audio_record_id == record_id)
+    async def delete_utterance(self, record_id: uuid.UUID, utterance_index: int) -> bool:
+        stmt = (
+            select(TranscriptUtteranceModel)
+            .where(TranscriptUtteranceModel.audio_record_id == record_id)
             .order_by(
                 TranscriptUtteranceModel.start_time.asc(),
                 TranscriptUtteranceModel.created_at.asc(),
                 TranscriptUtteranceModel.id.asc(),
             )
-            .all()
         )
+        res = await self.session.execute(stmt)
+        orm_utterances = list(res.scalars().all())
+
         if not orm_utterances or utterance_index < 0 or utterance_index >= len(orm_utterances):
             return False
 
-        self.session.delete(orm_utterances[utterance_index])
-        self._commit_or_flush()
+        await self.session.delete(orm_utterances[utterance_index])
+        await self._commit_or_flush()
         return True
 
-    def delete_utterance_by_id(self, record_id: uuid.UUID, utterance_id: uuid.UUID) -> bool:
-        orm_model = (
-            self.session.query(TranscriptUtteranceModel)
-            .filter(
-                TranscriptUtteranceModel.audio_record_id == record_id,
-                TranscriptUtteranceModel.id == utterance_id,
-            )
-            .first()
-        )
-        if not orm_model:
-            return False
-
-        self.session.delete(orm_model)
-        self._commit_or_flush()
-        return True
-
-    def add_utterance(self, record_id: uuid.UUID, utterance: TranscriptUtterance) -> bool:
-        record = (
-            self.session.query(AudioRecordModel).filter(AudioRecordModel.id == record_id).first()
-        )
+    async def add_utterance(self, record_id: uuid.UUID, utterance: TranscriptUtterance) -> bool:
+        stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
+        res = await self.session.execute(stmt)
+        record = res.scalar_one_or_none()
         if not record:
             return False
 
@@ -189,33 +182,43 @@ class PostgresRepository(ITranscriptRepository):
             created_at=utterance.created_at,
         )
         self.session.add(new_u)
-        self._commit_or_flush()
+        await self._commit_or_flush()
         return True
 
-    def list_records(self, skip: int = 0, limit: int = 20) -> List[AudioRecord]:
-        orm_records = (
-            self.session.query(AudioRecordModel)
+    async def list_records(self, skip: int = 0, limit: int = 20) -> List[AudioRecord]:
+        stmt = (
+            select(AudioRecordModel)
+            .options(selectinload(AudioRecordModel.utterances))
             .order_by(AudioRecordModel.created_at.desc())
             .offset(skip)
             .limit(limit)
-            .all()
         )
+        res = await self.session.execute(stmt)
+        orm_records = res.scalars().all()
         return [self._to_domain(r) for r in orm_records]
 
-    def delete_record(self, record_id: uuid.UUID) -> bool:
-        orm_model = (
-            self.session.query(AudioRecordModel).filter(AudioRecordModel.id == record_id).first()
-        )
+    async def delete_record(self, record_id: uuid.UUID) -> bool:
+        stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
+        res = await self.session.execute(stmt)
+        orm_model = res.scalar_one_or_none()
         if not orm_model:
             return False
-        self.session.delete(orm_model)
-        self._commit_or_flush()
+        await self.session.delete(orm_model)
+        await self._commit_or_flush()
         return True
 
     def _to_domain(self, orm: AudioRecordModel) -> AudioRecord:
         from datetime import datetime
+        from sqlalchemy import inspect
+
+        state = inspect(orm)
+        if state is not None and "utterances" in state.unloaded:
+            utterances_list = []
+        else:
+            utterances_list = list(getattr(orm, "utterances", []) or [])
+
         sorted_utterances = sorted(
-            orm.utterances,
+            utterances_list,
             key=lambda u: (u.start_time, u.created_at or datetime.min, str(u.id)),
         )
         domain_utterances = [

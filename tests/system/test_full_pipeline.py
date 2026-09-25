@@ -35,7 +35,7 @@ class MockDiarizer(IDiarizer):
 
 
 @pytest.mark.system
-def test_full_job_service_pipeline_e2e(tmp_path, in_memory_db):
+async def test_full_job_service_pipeline_e2e(tmp_path, in_memory_db):
     """
     Tüm sistem bileşenlerinin (Storage + DB Repo + Pipeline + FusionEngine + JobService)
     uçtan uca (E2E) mükemmel bir şekilde bir arada çalıştığını doğrular.
@@ -51,18 +51,18 @@ def test_full_job_service_pipeline_e2e(tmp_path, in_memory_db):
 
     # 2. İstemci Talebi (Ses Dosyası Yükleme & PENDING Görev Oluşturma)
     mock_audio_bytes = b"RIFF\x00\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00"
-    job_id = job_service.create_job(file_name="ornek_cagri.wav", file_bytes=mock_audio_bytes)
+    job_id = await job_service.create_job(file_name="ornek_cagri.wav", file_bytes=mock_audio_bytes)
 
-    record_pending = repository.get_record_by_id(job_id)
+    record_pending = await repository.get_record_by_id(job_id)
     assert record_pending is not None
     assert record_pending.status.value == "PENDING"
 
     # 3. Arka Plan Worker Tarafından Görevin İşlenmesi (execute_job)
-    success = job_service.execute_job(job_id)
+    success = await job_service.execute_job(job_id)
     assert success is True
 
     # 4. Veritabanı Sonuçlarının Doğrulanması (COMPLETED)
-    record_completed = repository.get_record_by_id(job_id)
+    record_completed = await repository.get_record_by_id(job_id)
     assert record_completed.status.value == "COMPLETED"
     assert record_completed.language == "tr"
     assert len(record_completed.utterances) == 2
@@ -74,3 +74,4 @@ def test_full_job_service_pipeline_e2e(tmp_path, in_memory_db):
     # Konuşmacı 1 (Temsilci): "Nasıl yardımcı olabilirim"
     assert record_completed.utterances[1].speaker_id == "SPEAKER_01"
     assert record_completed.utterances[1].text == "Nasıl yardımcı olabilirim"
+

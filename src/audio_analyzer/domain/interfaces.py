@@ -31,27 +31,27 @@ class IAudioStorage(ABC):
 
 
 class ITranscriptRepository(ABC):
-    """İlişkisel Veritabanı (PostgreSQL / SQLite) Repository Soyut Arayüzü."""
+    """İlişkisel Veritabanı (PostgreSQL / SQLite) Asenkron Repository Soyut Arayüzü."""
 
     @abstractmethod
-    def save_record(self, record: AudioRecord) -> AudioRecord:
+    async def save_record(self, record: AudioRecord) -> AudioRecord:
         """Yeni bir ses kaydı meta verisini veritabanına ekler."""
         pass
 
     @abstractmethod
-    def get_record_by_id(self, record_id: uuid.UUID) -> Optional[AudioRecord]:
+    async def get_record_by_id(self, record_id: uuid.UUID) -> Optional[AudioRecord]:
         """ID'ye göre ses kaydı ve zaman damgalı konuşmacı metinlerini getirir."""
         pass
 
     @abstractmethod
-    def update_status(
+    async def update_status(
         self, record_id: uuid.UUID, status: JobStatus, error_message: Optional[str] = None
     ) -> bool:
         """İş durumunu (PENDING, PROCESSING, COMPLETED, FAILED) günceller."""
         pass
 
     @abstractmethod
-    def save_utterances(
+    async def save_utterances(
         self,
         record_id: uuid.UUID,
         utterances: List[TranscriptUtterance],
@@ -61,53 +61,53 @@ class ITranscriptRepository(ABC):
         pass
 
     @abstractmethod
-    def update_utterance(
+    async def update_utterance(
         self, record_id: uuid.UUID, utterance_index: int, speaker_id: str, text: str
     ) -> bool:
         """Belirtilen indeksteki konuşmacı ve metin bilgisini günceller."""
         pass
 
     @abstractmethod
-    def delete_utterance(self, record_id: uuid.UUID, utterance_index: int) -> bool:
+    async def delete_utterance(self, record_id: uuid.UUID, utterance_index: int) -> bool:
         """Belirtilen indeksteki konuşmacı bloğunu siler."""
         pass
 
     @abstractmethod
-    def add_utterance(self, record_id: uuid.UUID, utterance: TranscriptUtterance) -> bool:
+    async def add_utterance(self, record_id: uuid.UUID, utterance: TranscriptUtterance) -> bool:
         """Ses kaydına yeni bir konuşmacı bloğu ekler."""
         pass
 
     @abstractmethod
-    def list_records(self, skip: int = 0, limit: int = 20) -> List[AudioRecord]:
+    async def list_records(self, skip: int = 0, limit: int = 20) -> List[AudioRecord]:
         """Tüm ses kayıtlarını tarihe göre tersten sıralı ve sayfalamalı getirir."""
         pass
 
     @abstractmethod
-    def delete_record(self, record_id: uuid.UUID) -> bool:
+    async def delete_record(self, record_id: uuid.UUID) -> bool:
         """Ses kaydını ve bağlı tüm konuşmacı metinlerini veritabanından siler."""
         pass
 
 
 class IUnitOfWork(ABC):
-    """Unit of Work (İş Birimi) İşlem ve Transaction Yönetimi Arayüzü."""
+    """Unit of Work (İş Birimi) Asenkron İşlem ve Transaction Yönetimi Arayüzü."""
 
     repository: ITranscriptRepository
 
     @abstractmethod
-    def __enter__(self):
+    async def __aenter__(self):
         pass
 
     @abstractmethod
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         pass
 
     @abstractmethod
-    def commit(self):
+    async def commit(self):
         """Transaction değişikliklerini veritabanına kaydeder."""
         pass
 
     @abstractmethod
-    def rollback(self):
+    async def rollback(self):
         """Hata durumunda transaction değişikliklerini geri alır."""
         pass
 

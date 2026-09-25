@@ -1,28 +1,13 @@
-"""
-================================================================================
-  SES ANALİZİ SİSTEMİ (Speech-to-Text & Speaker Diarization) - TEST RUNNER
-================================================================================
-Bu betik, ses analizi sistemini kendi bilgisayarınızda kolayca çalıştırmanız ve 
-test etmeniz için hazırlanmıştır.
-
-Kullanım:
-  1. Sentetik Demo Ses İle Test Etmek İçin:
-     python run_analysis.py --demo
-
-  2. Kendi Ses Dosyanız İle Test Etmek İçin:
-     python run_analysis.py my_audio.wav
-================================================================================
-"""
-
-import sys
-import os
-import wave
-import math
-import struct
+import asyncio
 import json
+import math
+import os
+import struct
+import sys
+import wave
 from pathlib import Path
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 # Proje kaynak dizinini Python yoluna ekleme
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -33,10 +18,11 @@ if hasattr(sys.stdout, 'reconfigure'):
 from audio_analyzer.adapters.repository.models import Base
 from audio_analyzer.adapters.repository.unit_of_work import SqlAlchemyUnitOfWork
 from audio_analyzer.adapters.storage.storage_factory import get_storage_adapter
+from audio_analyzer.api.dependencies import create_async_db_engine
 from audio_analyzer.domain.models import DeviceConfig
 from audio_analyzer.services.fusion_engine import FusionEngine
-from audio_analyzer.services.pipeline import AudioAnalysisPipeline
 from audio_analyzer.services.job_service import JobService
+from audio_analyzer.services.pipeline import AudioAnalysisPipeline
 
 
 def create_synthetic_wav(file_path: str, duration_sec: float = 3.0):
@@ -64,7 +50,7 @@ def create_synthetic_wav(file_path: str, duration_sec: float = 3.0):
     print(f"  [+] Sentetik test ses dosyası oluşturuldu: {path.absolute()}")
 
 
-def main():
+async def main_async():
     print("=" * 80)
     print("      SES ANALİZİ SİSTEMİ - MÜHENDİSLİK ÇALIŞTIRMA BETİĞİ (RUNNER)")
     print("=" * 80)
@@ -78,10 +64,10 @@ def main():
 
     # 2. Veritabanı ve UoW Kurulumu
     database_url = os.getenv("DATABASE_URL", "sqlite:///storage/dev_database.db")
-    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
-    engine = create_engine(database_url, echo=False, connect_args=connect_args)
-    Base.metadata.create_all(bind=engine)
-    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    engine = create_async_db_engine(database_url)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, class_=AsyncSession)
     uow = SqlAlchemyUnitOfWork(session_factory=session_factory)
     print(f"\n[2/5] VERİTABANI İŞLEMLERİ (Unit-of-Work):")
     print(f"      - Veritabanı URL           : {database_url}")
@@ -150,21 +136,21 @@ def main():
     print(f"\n[5/5] SES ANALİZ GÖREVİ ÇALIŞTIRILIYOR (UoW):")
     filename = Path(target_audio_file).name
 
-    with uow:
+    async with uow:
         job_service = JobService(
             storage=storage,
             repository=uow.repository,
             pipeline=pipeline,
         )
 
-        job_id = job_service.create_job(file_name=filename, file_bytes=audio_bytes)
+        job_id = await job_service.create_job(file_name=filename, file_bytes=audio_bytes)
         print(f"      - Oluşturulan İş ID (job_id): {job_id} [Durum: PENDING]")
 
         print(f"      - Worker Görevi Yürütülüyor...")
-        success = job_service.execute_job(job_id)
+        success = await job_service.execute_job(job_id)
 
         if success:
-            record = uow.repository.get_record_by_id(job_id)
+            record = await uow.repository.get_record_by_id(job_id)
             print("\n" + "=" * 80)
             print("                        ANALİZ BAŞARIYLA TAMAMLANDI!")
             print("=" * 80)
@@ -195,10 +181,15 @@ def main():
             print(f"\n  [+] Detaylı JSON çıktısı kaydedildi: {json_output_path.absolute()}")
             print("=" * 80 + "\n")
         else:
-            record = uow.repository.get_record_by_id(job_id)
+            record = await uow.repository.get_record_by_id(job_id)
             print(f"\n  [!] HATA: Analiz başarısız oldu! Durum: {record.status.value}")
             print(f"  [!] Detay: {record.error_message}")
 
 
+def main():
+    asyncio.run(main_async())
+
+
 if __name__ == "__main__":
     main()
+

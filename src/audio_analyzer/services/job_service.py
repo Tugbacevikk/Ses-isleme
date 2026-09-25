@@ -41,7 +41,7 @@ class JobService:
         self.repo = repository
         self.pipeline = pipeline
 
-    def create_job(self, file_name: str, file_bytes: bytes, callback_url: Optional[str] = None) -> uuid.UUID:
+    async def create_job(self, file_name: str, file_bytes: bytes, callback_url: Optional[str] = None) -> uuid.UUID:
         """
         Yeni bir analiz görevi oluşturur (status='PENDING').
         Ses dosyasını depolamaya kaydeder ve DB kaydını açar.
@@ -56,10 +56,10 @@ class JobService:
             status=JobStatus.PENDING,
             callback_url=callback_url,
         )
-        saved = self.repo.save_record(record)
+        saved = await self.repo.save_record(record)
         return saved.id
 
-    def execute_job(
+    async def execute_job(
         self, record_id: uuid.UUID, file_bytes: Optional[bytes] = None
     ) -> bool:
         """
@@ -67,12 +67,12 @@ class JobService:
         Durumu 'PROCESSING' yapar, pipeline'ı çalıştırır, sonuçları DB'ye kaydeder ('COMPLETED'/'FAILED')
         ve tanımlıysa webhook callback bildirimini tetikler.
         """
-        record = self.repo.get_record_by_id(record_id)
+        record = await self.repo.get_record_by_id(record_id)
         if not record:
             return False
 
         # Durumu PROCESSING yap
-        self.repo.update_status(record_id, JobStatus.PROCESSING)
+        await self.repo.update_status(record_id, JobStatus.PROCESSING)
 
         try:
             import os
@@ -104,7 +104,7 @@ class JobService:
                 utterances, language, overlap_summary = self.pipeline.process(local_audio_path)
 
             # Başarılı ise sonuçları ve dili kaydet (COMPLETED)
-            self.repo.save_utterances(record_id, utterances, language=language)
+            await self.repo.save_utterances(record_id, utterances, language=language)
 
             # Webhook callback tanımlıysa gönder
             if record.callback_url:
@@ -127,14 +127,14 @@ class JobService:
                         for u in utterances
                     ],
                 }
-                webhook_svc.send_callback(record.callback_url, payload)
+                await webhook_svc.send_callback_async(record.callback_url, payload)
 
             return True
 
         except Exception as ex:
             logger.error("Job execution failed for job_id=%s: %s", record_id, ex, exc_info=True)
             sanitized_msg = sanitize_error_message(ex)
-            self.repo.update_status(record_id, JobStatus.FAILED, error_message=sanitized_msg)
+            await self.repo.update_status(record_id, JobStatus.FAILED, error_message=sanitized_msg)
 
             if record.callback_url:
                 from audio_analyzer.services.webhook_service import WebhookService
@@ -146,7 +146,7 @@ class JobService:
                     "status": "FAILED",
                     "error_message": sanitized_msg,
                 }
-                webhook_svc.send_callback(record.callback_url, payload)
+                await webhook_svc.send_callback_async(record.callback_url, payload)
 
             return False
 

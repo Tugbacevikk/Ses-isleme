@@ -4,7 +4,10 @@ from fastapi.testclient import TestClient
 from audio_analyzer.api.main import app
 from audio_analyzer.utils.file_validator import is_valid_audio_content
 
-client = TestClient(app)
+@pytest.fixture
+def client():
+    with TestClient(app) as c:
+        yield c
 
 
 def test_valid_audio_magic_headers():
@@ -43,10 +46,11 @@ def test_invalid_audio_content_rejected():
     assert is_valid_audio_content(short_bytes, "short.wav") is False
 
 
-def test_upload_api_rejects_fake_audio_file():
+def test_upload_api_rejects_fake_audio_file(client):
     fake_wav_bytes = b"Hello world, I am a text file pretending to be wav!"
     files = {"file": ("fake.wav", fake_wav_bytes, "audio/wav")}
 
     response = client.post("/api/v1/analyze", files=files)
     assert response.status_code == 400
     assert "geçerli ve bozulmamış bir ses dosyası içeriği" in response.json()["detail"]
+

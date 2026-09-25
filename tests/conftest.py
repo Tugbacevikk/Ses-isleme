@@ -14,16 +14,26 @@ def enable_mock_stt_for_tests(monkeypatch):
 
 
 @pytest.fixture
-def in_memory_db():
-    """Birim testler için bellek içi (in-memory) SQLite veritabanı fixture'ı."""
-    engine = create_engine("sqlite:///:memory:", echo=False)
-    Base.metadata.create_all(bind=engine)
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    session = TestingSessionLocal()
-    try:
+async def in_memory_db():
+    """Birim testler için asenkron bellek içi (in-memory) SQLite veritabanı fixture'ı."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        echo=False,
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    AsyncTestingSessionLocal = async_sessionmaker(
+        bind=engine, autoflush=False, expire_on_commit=False, class_=AsyncSession
+    )
+    async with AsyncTestingSessionLocal() as session:
         yield session
-    finally:
-        session.close()
+
+    await engine.dispose()
 
 
 @pytest.fixture

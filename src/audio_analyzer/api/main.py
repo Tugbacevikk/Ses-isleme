@@ -27,9 +27,10 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """
     FastAPI Uygulama Yaşam Döngüsü (Lifespan).
-    Sunucu başlatılırken veritabanı tablolarını oluşturur ve AI modellerini önceden ısıtır (Warm-load).
+    Sunucu başlatılırken veritabanı tablolarını asenkron olarak oluşturur ve AI modellerini önceden ısıtır (Warm-load).
     """
-    Base.metadata.create_all(bind=engine)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
     try:
         from audio_analyzer.services.pipeline_factory import get_shared_pipeline
@@ -89,7 +90,7 @@ async def favicon():
 
 
 @app.get("/health")
-def health_check():
+async def health_check():
     """
     Sistem Sağlık ve Kullanılabilirlik (Liveness/Readiness Probe) Kontrolü.
     Veritabanı bağlantısı ve genel uygulama durumunu kontrol eder.
@@ -98,8 +99,8 @@ def health_check():
     try:
         from sqlalchemy import text
 
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
     except Exception as e:
         logger.error("Health check database connection error: %s", e, exc_info=True)
         db_status = "ERROR"

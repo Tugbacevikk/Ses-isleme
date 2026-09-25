@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
 from audio_analyzer.domain.interfaces import IUnitOfWork
@@ -6,33 +6,34 @@ from audio_analyzer.domain.interfaces import IUnitOfWork
 
 class SqlAlchemyUnitOfWork(IUnitOfWork):
     """
-    SQLAlchemy için Unit-of-Work (UoW) Desen Adaptörü.
+    SQLAlchemy için Async Unit-of-Work (UoW) Desen Adaptörü.
     Transaction sınırlarını (commit, rollback, session kapama) tek bir noktada toplar
     ve veritabanı işlemlerinin atomik olmasını garanti eder.
     """
 
-    def __init__(self, session_factory: sessionmaker):
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]):
         self.session_factory = session_factory
-        self.session: Session = None
-        self.repository: PostgresRepository = None
+        self.session: AsyncSession | None = None
+        self.repository: PostgresRepository | None = None
 
-    def __enter__(self):
+    async def __aenter__(self):
         self.session = self.session_factory()
         self.repository = PostgresRepository(self.session, autocommit=False)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         if exc_type is not None:
-            self.rollback()
+            await self.rollback()
         else:
-            self.commit()
+            await self.commit()
         if self.session:
-            self.session.close()
+            await self.session.close()
 
-    def commit(self):
+    async def commit(self):
         if self.session:
-            self.session.commit()
+            await self.session.commit()
 
-    def rollback(self):
+    async def rollback(self):
         if self.session:
-            self.session.rollback()
+            await self.session.rollback()
+

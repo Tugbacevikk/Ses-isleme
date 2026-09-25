@@ -1,5 +1,5 @@
 import uuid
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -18,7 +18,7 @@ def test_sanitize_error_message_removes_file_paths():
     assert "FileNotFoundError" in sanitized
 
 
-def test_execute_job_failure_does_not_leak_traceback(tmp_path, in_memory_db):
+async def test_execute_job_failure_does_not_leak_traceback(tmp_path, in_memory_db):
     storage = LocalStorageAdapter(base_dir=str(tmp_path / "storage"))
     repository = PostgresRepository(session=in_memory_db)
 
@@ -28,12 +28,12 @@ def test_execute_job_failure_does_not_leak_traceback(tmp_path, in_memory_db):
 
     job_service = JobService(storage=storage, repository=repository, pipeline=mock_pipeline)
 
-    record_id = job_service.create_job("test_audio.wav", b"RIFFfakebytes")
-    success = job_service.execute_job(record_id)
+    record_id = await job_service.create_job("test_audio.wav", b"RIFFfakebytes")
+    success = await job_service.execute_job(record_id)
 
     assert success is False
 
-    record = repository.get_record_by_id(record_id)
+    record = await repository.get_record_by_id(record_id)
     assert record is not None
     assert record.status == JobStatus.FAILED
     assert record.error_message is not None
@@ -44,23 +44,24 @@ def test_execute_job_failure_does_not_leak_traceback(tmp_path, in_memory_db):
     assert "RuntimeError" in record.error_message
 
 
-def test_execute_job_triggers_webhook_callback(tmp_path, in_memory_db, monkeypatch):
+async def test_execute_job_triggers_webhook_callback(tmp_path, in_memory_db, monkeypatch):
     storage = LocalStorageAdapter(base_dir=str(tmp_path / "storage"))
     repository = PostgresRepository(session=in_memory_db)
 
     mock_pipeline = MagicMock()
     mock_pipeline.process.return_value = ([], "tr", None)
 
-    mock_send_callback = MagicMock(return_value=True)
-    monkeypatch.setattr("audio_analyzer.services.webhook_service.WebhookService.send_callback", mock_send_callback)
+    mock_send_callback = AsyncMock(return_value=True)
+    monkeypatch.setattr("audio_analyzer.services.webhook_service.WebhookService.send_callback_async", mock_send_callback)
 
     job_service = JobService(storage=storage, repository=repository, pipeline=mock_pipeline)
 
-    record_id = job_service.create_job("test_audio.wav", b"RIFFfakebytes", callback_url="https://example.com/webhook")
-    success = job_service.execute_job(record_id)
+    record_id = await job_service.create_job("test_audio.wav", b"RIFFfakebytes", callback_url="https://example.com/webhook")
+    success = await job_service.execute_job(record_id)
 
     assert success is True
     assert mock_send_callback.called
     assert mock_send_callback.call_args[0][0] == "https://example.com/webhook"
     assert mock_send_callback.call_args[0][1]["status"] == "COMPLETED"
+
 

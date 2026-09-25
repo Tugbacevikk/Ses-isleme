@@ -7,7 +7,7 @@ from audio_analyzer.domain.models import AudioRecord, JobStatus, TranscriptUtter
 
 
 @pytest.mark.integration
-def test_postgres_repository_crud_flow(in_memory_db):
+async def test_postgres_repository_crud_flow(in_memory_db):
     """Repository entegrasyonunun SQLite (in-memory) üzerinde eksiksiz çalıştığını doğrular."""
     repo = PostgresRepository(session=in_memory_db)
 
@@ -20,14 +20,14 @@ def test_postgres_repository_crud_flow(in_memory_db):
         duration_seconds=10.5,
         status=JobStatus.PENDING,
     )
-    saved_record = repo.save_record(new_record)
+    saved_record = await repo.save_record(new_record)
     assert saved_record.id == record_id
     assert saved_record.status == JobStatus.PENDING
 
     # 2. Durum Güncelleme (PROCESSING)
-    updated = repo.update_status(record_id, JobStatus.PROCESSING)
+    updated = await repo.update_status(record_id, JobStatus.PROCESSING)
     assert updated is True
-    record_fetched = repo.get_record_by_id(record_id)
+    record_fetched = await repo.get_record_by_id(record_id)
     assert record_fetched.status == JobStatus.PROCESSING
 
     # 3. Utterances Kaydetme ve Tamamlama (COMPLETED)
@@ -36,11 +36,11 @@ def test_postgres_repository_crud_flow(in_memory_db):
             speaker_id="SPEAKER_00", start_time=0.0, end_time=2.5, text="Merhaba dunya"
         )
     ]
-    saved_utt = repo.save_utterances(record_id, utterances, language="tr")
+    saved_utt = await repo.save_utterances(record_id, utterances, language="tr")
     assert saved_utt is True
 
     # 4. Doğrulama
-    final_record = repo.get_record_by_id(record_id)
+    final_record = await repo.get_record_by_id(record_id)
     assert final_record.status == JobStatus.COMPLETED
     assert final_record.language == "tr"
     assert len(final_record.utterances) == 1
@@ -62,3 +62,4 @@ def test_init_engine_fallback_behavior(monkeypatch):
     monkeypatch.setenv("ALLOW_SQLITE_FALLBACK", "true")
     fallback_engine = init_engine()
     assert "sqlite" in str(fallback_engine.url)
+

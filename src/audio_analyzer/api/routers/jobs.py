@@ -41,19 +41,25 @@ async def verify_api_key(api_key: Optional[str] = Depends(api_key_header)):
     return api_key
 
 
-def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
+async def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
     """
     Arka plan asenkron worker fonksiyonu (Non-blocking HTTP 202 mimarisi).
     Celery, RQ ve BackgroundTasks için merkezi JobService.execute_job iş mantığını çağırır.
     """
     try:
         record_uuid = uuid.UUID(job_id_str)
-        with get_uow() as uow:
+        async with get_uow() as uow:
             storage = get_storage_adapter()
             job_service = JobService(storage=storage, repository=uow.repository)
-            job_service.execute_job(record_uuid, file_bytes=file_bytes)
+            await job_service.execute_job(record_uuid, file_bytes=file_bytes)
     except Exception as ex:
         logger.error("Background task execution error: %s", ex, exc_info=True)
+
+
+def run_pipeline_background_sync(job_id_str: str, file_name: str, file_bytes: bytes):
+    """Celery veya RQ gibi senkron worker'lar için asyncio sarmalayıcısı."""
+    import asyncio
+    return asyncio.run(run_pipeline_background(job_id_str, file_name, file_bytes))
 
 
 # --- Schemas ---
@@ -173,7 +179,7 @@ async def upload_and_analyze_audio(
 
     storage = get_storage_adapter()
     job_service = JobService(storage=storage, repository=repository)
-    job_id = job_service.create_job(file_name=file.filename, file_bytes=file_bytes, callback_url=callback_url)
+    job_id = await job_service.create_job(file_name=file.filename, file_bytes=file_bytes, callback_url=callback_url)
 
     use_redis_queue = os.getenv("USE_REDIS_QUEUE", "false").lower() == "true"
     use_celery = os.getenv("USE_CELERY", "false").lower() == "true"
@@ -186,7 +192,7 @@ async def upload_and_analyze_audio(
             redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
             redis_conn = Redis.from_url(redis_url)
             q = Queue("audio_tasks", connection=redis_conn)
-            q.enqueue(run_pipeline_background, str(job_id), file.filename, file_bytes)
+            q.enqueue(run_pipeline_background_sync, str(job_id), file.filename, file_bytes)
             logger.info("Görüşme görevi %s başarıyla Redis Queue (RQ) kuyruğuna fırlatıldı.", job_id)
         except Exception as e:
             logger.warning("Redis Queue fırlatma uyarısı (%s), yerel BackgroundTasks'e düşülüyor", e)
@@ -215,7 +221,7 @@ async def upload_and_analyze_audio(
 
 
 @router.get("/jobs", response_model=List[JobStatusResponse])
-def list_jobs(
+async def list_jobs(
     skip: int = Query(0, ge=0, description="Atlanacak kayıt sayısı"),
     limit: int = Query(20, ge=1, le=100, description="Getirilecek maksimum kayıt sayısı"),
     repository: ITranscriptRepository = Depends(get_repository),
@@ -225,7 +231,7 @@ def list_jobs(
     Geçmişte yüklenen tüm ses analizi görevlerini tarihe göre tersten sıralı (en yeni en üstte)
     ve sayfalamalı (Pagination: skip, limit) olarak getirir.
     """
-    records = repository.list_records(skip=skip, limit=limit)
+    records = await repository.list_records(skip=skip, limit=limit)
     return [
         JobStatusResponse(
             job_id=str(r.id),
@@ -248,7 +254,7 @@ def list_jobs(
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
-def get_job_status(
+async def get_job_status(
     job_id: str,
     repository: ITranscriptRepository = Depends(get_repository),
     _api_key: Optional[str] = Depends(verify_api_key),
@@ -261,7 +267,7 @@ def get_job_status(
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    record = repository.get_record_by_id(record_uuid)
+    record = await repository.get_record_by_id(record_uuid)
 
     if not record:
         raise HTTPException(status_code=404, detail="Ses analizi görevi bulunamadı.")
@@ -287,7 +293,7 @@ def get_job_status(
 
 
 @router.get("/jobs/{job_id}/audio")
-def get_job_audio_file(
+async def get_job_audio_file(
     job_id: str,
     repository: ITranscriptRepository = Depends(get_repository),
     _api_key: Optional[str] = Depends(verify_api_key),
@@ -300,7 +306,7 @@ def get_job_audio_file(
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    record = repository.get_record_by_id(record_uuid)
+    record = await repository.get_record_by_id(record_uuid)
 
     if not record:
         raise HTTPException(status_code=404, detail="Ses analizi görevi bulunamadı.")
@@ -319,7 +325,7 @@ def get_job_audio_file(
 
 
 @router.delete("/jobs/{job_id}")
-def delete_job(
+async def delete_job(
     job_id: str,
     repository: ITranscriptRepository = Depends(get_repository),
     _api_key: Optional[str] = Depends(verify_api_key),
@@ -332,7 +338,7 @@ def delete_job(
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    record = repository.get_record_by_id(record_uuid)
+    record = await repository.get_record_by_id(record_uuid)
     if not record:
         raise HTTPException(status_code=404, detail="Ses analizi görevi bulunamadı.")
 
@@ -342,7 +348,7 @@ def delete_job(
     except Exception as ex:
         logger.warning("File delete note: %s", ex)
 
-    success = repository.delete_record(record_uuid)
+    success = await repository.delete_record(record_uuid)
     if not success:
         raise HTTPException(status_code=404, detail="Görevi veritabanından silme başarısız.")
 
@@ -350,7 +356,7 @@ def delete_job(
 
 
 @router.put("/jobs/{job_id}/utterances/{utterance_index}")
-def update_utterance_speaker(
+async def update_utterance_speaker(
     job_id: str,
     utterance_index: int,
     req: UtteranceUpdateRequest,
@@ -365,7 +371,7 @@ def update_utterance_speaker(
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    success = repository.update_utterance(
+    success = await repository.update_utterance(
         record_id=record_uuid,
         utterance_index=utterance_index,
         speaker_id=req.speaker_id,
@@ -378,7 +384,7 @@ def update_utterance_speaker(
 
 
 @router.delete("/jobs/{job_id}/utterances/{utterance_index}")
-def delete_utterance(
+async def delete_utterance(
     job_id: str,
     utterance_index: str,
     repository: ITranscriptRepository = Depends(get_repository),
@@ -397,7 +403,7 @@ def delete_utterance(
     try:
         utt_uuid = uuid.UUID(utterance_index)
         if hasattr(repository, "delete_utterance_by_id"):
-            success = repository.delete_utterance_by_id(record_uuid, utt_uuid)
+            success = await repository.delete_utterance_by_id(record_uuid, utt_uuid)
     except ValueError:
         pass
 
@@ -405,7 +411,7 @@ def delete_utterance(
     if not success:
         try:
             idx = int(utterance_index)
-            success = repository.delete_utterance(record_id=record_uuid, utterance_index=idx)
+            success = await repository.delete_utterance(record_id=record_uuid, utterance_index=idx)
         except ValueError:
             raise HTTPException(status_code=400, detail="Geçersiz indeks veya UUID formatı.")
 
@@ -416,7 +422,7 @@ def delete_utterance(
 
 
 @router.post("/jobs/{job_id}/utterances")
-def create_utterance(
+async def create_utterance(
     job_id: str,
     req: UtteranceCreateRequest,
     repository: ITranscriptRepository = Depends(get_repository),
@@ -437,7 +443,7 @@ def create_utterance(
         end_time=req.end_time,
         text=req.text,
     )
-    success = repository.add_utterance(record_id=record_uuid, utterance=new_u)
+    success = await repository.add_utterance(record_id=record_uuid, utterance=new_u)
     if not success:
         raise HTTPException(status_code=404, detail="Ses görevi bulunamadı.")
 

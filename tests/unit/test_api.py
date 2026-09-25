@@ -8,7 +8,10 @@ from fastapi.testclient import TestClient
 
 from audio_analyzer.api.main import app
 
-client = TestClient(app)
+@pytest.fixture
+def client():
+    with TestClient(app) as c:
+        yield c
 
 
 def make_valid_wav_bytes() -> bytes:
@@ -28,7 +31,7 @@ def make_valid_wav_bytes() -> bytes:
 
 
 @pytest.mark.unit
-def test_api_root_endpoint():
+def test_api_root_endpoint(client):
     """Web Arayüzü (HTML) kök dizin kontrolünü doğrular."""
     response = client.get("/")
     assert response.status_code == 200
@@ -37,7 +40,7 @@ def test_api_root_endpoint():
 
 
 @pytest.mark.unit
-def test_api_upload_and_status_flow(tmp_path, monkeypatch):
+def test_api_upload_and_status_flow(client, tmp_path, monkeypatch):
     """POST /api/v1/analyze ve GET /api/v1/jobs/{id} REST akışını doğrular."""
     monkeypatch.setenv("USE_REDIS_QUEUE", "false")
     monkeypatch.setenv("USE_CELERY", "false")
@@ -60,7 +63,7 @@ def test_api_upload_and_status_flow(tmp_path, monkeypatch):
 
 
 @pytest.mark.unit
-def test_utterance_crud_flow():
+def test_utterance_crud_flow(client):
     """ITranscriptRepository üzerinden PUT, DELETE, POST utterance endpoint akışlarını doğrular."""
     valid_wav = make_valid_wav_bytes()
     files = {"file": ("test_crud.wav", valid_wav, "audio/wav")}
@@ -95,7 +98,7 @@ def test_utterance_crud_flow():
 
 
 @pytest.mark.unit
-def test_list_jobs_endpoint():
+def test_list_jobs_endpoint(client):
     """GET /api/v1/jobs sayfalamalı geçmiş işler listeleme endpoint'ini doğrular."""
     list_res = client.get("/api/v1/jobs?skip=0&limit=10")
     assert list_res.status_code == 200
@@ -105,7 +108,7 @@ def test_list_jobs_endpoint():
 
 
 @pytest.mark.unit
-def test_api_key_authorization_on_read_and_write_endpoints(monkeypatch):
+def test_api_key_authorization_on_read_and_write_endpoints(client, monkeypatch):
     """API_KEY ortam değişkeni ayarlandığında tüm okuma ve yazma endpoint'lerinin 401 döndürdüğünü doğrular."""
     monkeypatch.setenv("API_KEY", "secret-test-key")
 
@@ -129,10 +132,11 @@ def test_api_key_authorization_on_read_and_write_endpoints(monkeypatch):
 
 
 @pytest.mark.unit
-def test_health_check_endpoint():
+def test_health_check_endpoint(client):
     """GET /health liveness probe endpoint'ini doğrular."""
     res = client.get("/health")
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "HEALTHY"
     assert data["database"] == "OK"
+
