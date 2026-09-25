@@ -31,8 +31,6 @@ class SpeechBrainECAPADiarizer(IDiarizer):
 
     def _load_classifier(self):
         if self._classifier is None:
-            import os
-            os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
             from speechbrain.inference.speaker import EncoderClassifier
             from pathlib import Path
 

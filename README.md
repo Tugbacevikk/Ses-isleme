@@ -8,26 +8,24 @@ Yüksek performanslı, modüler, **Clean Architecture / Code-First** prensipleri
 
 ## Özellikler
 - **Speech-to-Text (STT)**: Faster-Whisper ile zaman damgalı metne dönüştürme (`tiny`, `small`, `medium` model desteği).
-- **Çok Kademeli Speaker Diarization (Fallback Chain)**:
-  - **1. Kademe**: SOTA PyAnnote 3.1 (HuggingFace Gated Model).
-  - **2. Kademe**: SpeechBrain ECAPA-TDNN (%100 Çevrimdışı & Token-Free).
-  - **3. Kademe**: Local Spectral Clustering (Tamamen yerel akustik kümeleme).
+- **%100 Çevrimdışı Speaker Diarization**:
+  - **Birincil Motor**: SpeechBrain ECAPA-TDNN (%100 Çevrimdışı, Token-Free & Derin Nöral Ses Parmak İzi).
+  - **İkincil Motor**: Local Spectral Clustering (Tamamen yerel akustik kümeleme).
 - **SemanticRefiner & Yerel LLM Entegrasyonu**:
-  - Alan Odaklı Kurallar (`domain_mode="call_center"` ile müşteri/temsilci geçiş tespiti).
+  - Alan Odaklı Kurallar (`domain_mode="call_center"` ile müşteri/temsilci geçiş tespiti ve rol sabitleme).
   - Opsiyonel yerel Ollama LLM (`llama3.2` / `qwen2.5`) entegrasyonu ile konuşmacı metinlerinin anlamsal iyileştirilmesi.
 - **Fusion Engine**: IoU ve Midpoint çakışma çözümleme algoritması + 1.5s sessizlik eşiği.
 - **Voice Activity Detection (VAD)**: Silero VAD ile gürültü ve sessizlik halüsinasyon filtrelemesi.
 - **Rust PyO3 Native DSP Accelerator**: Rust ile yazılmış C-hızında sıfır gecikmeli resample, VAD ve kosinüs benzerliği modülü.
-- **Asenkron Job Queue**: Redis + Celery ve FastAPI BackgroundTasks ile non-blocking HTTP 202 istek işleme.
+- **Asenkron Job Queue**: Redis Queue (RQ), Celery ve FastAPI BackgroundTasks ile non-blocking HTTP 202 istek işleme.
 - **Sıcak Yükleme (Warm-Loading)**: Singleton AI Pipeline ile hızlı ve düşük gecikmeli analiz.
 
 ## 🏢 Kurumsal Çevrimdışı (Air-Gapped / Token-Free) Yapılandırma
 
 Sistem, internete hiç çıkmadan ve **herhangi bir HuggingFace Token'ına ihtiyaç duymadan (Token-Free)** %100 yerel modda çalışır:
 
-* **Çevrimdışı (Air-Gapped) Çalıştırma:** Modeller yerel `storage/models/` klasöründen okunur. Herhangi bir dış API veya HuggingFace token zorunluluğu yoktur.
-* **Token-Free Diarization:** 2. Kademe (**SpeechBrain ECAPA-TDNN**) ve 3. Kademe (**Local Spectral Cluster**) diyarizasyon motorları tamamen yerel matematiksel vektör hesaplaması yapar ve internet/token gerektirmez.
-* *(Opsiyonel)* Çevrimiçi HuggingFace PyAnnote 3.1 kullanmak isterseniz `.env` dosyasında `HF_TOKEN` girebilirsiniz. Girilmediğinde sistem otomatik olarak %100 yerel çevrimdışı motorla devam eder.
+* **Çevrimdışı (Air-Gapped) Çalıştırma:** Modeller yerel diskinizdeki önbellekten veya `storage/models/` klasöründen okunur. Herhangi bir dış API veya HuggingFace token zorunluluğu yoktur.
+* **Token-Free Diarization:** **SpeechBrain ECAPA-TDNN** ve **Local Spectral Cluster** diyarizasyon motorları tamamen yerel matematiksel vektör hesaplaması yapar ve internet/token gerektirmez.
 
 ## Kurulum ve Başlatma
 
