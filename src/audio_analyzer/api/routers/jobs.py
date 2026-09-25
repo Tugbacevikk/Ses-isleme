@@ -93,9 +93,38 @@ class UtteranceCreateRequest(BaseModel):
     text: str
 
 
+import threading
+import time
+from collections import defaultdict
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
+
+
+class SimpleRateLimiter:
+    """Thread-safe IP bazlı dakikalık istek sınırlayıcı (DoS / Rate Limit Koruması)."""
+
+    def __init__(self, default_rpm: int = 60):
+        self.default_rpm = default_rpm
+        self.history = defaultdict(list)
+        self.lock = threading.Lock()
+
+    def is_allowed(self, client_ip: str) -> bool:
+        rpm = int(os.getenv("RATE_LIMIT_PER_MINUTE", str(self.default_rpm)))
+        now = time.time()
+        with self.lock:
+            self.history[client_ip] = [t for t in self.history[client_ip] if now - t < 60.0]
+            if len(self.history[client_ip]) >= rpm:
+                return False
+            self.history[client_ip].append(now)
+            return True
+
+
+rate_limiter = SimpleRateLimiter()
+
+
 # --- Endpoints ---
 @router.post("/analyze", response_model=JobCreateResponse, status_code=202)
 async def upload_and_analyze_audio(
+    request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     callback_url: Optional[str] = Form(None),
@@ -105,7 +134,14 @@ async def upload_and_analyze_audio(
     """
     Ses dosyasını yükler, validasyondan geçirir, PENDING durumuyla kaydeder
     ve analizi ASENKRON başlatır (HTTP 202 Accepted).
+    Rate-limiting (DoS koruması) uygulanır.
     """
+    client_ip = request.client.host if request and request.client else "127.0.0.1"
+    if not rate_limiter.is_allowed(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Çok fazla analiz isteği gönderildi (Rate limit aşıldı). Lütfen bir dakika bekleyin.",
+        )
     if not file.filename:
         raise HTTPException(status_code=400, detail="Ses dosyası adı boş olamaz.")
 

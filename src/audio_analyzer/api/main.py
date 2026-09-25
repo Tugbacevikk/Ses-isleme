@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from audio_analyzer.adapters.repository.models import Base
 from audio_analyzer.api.dependencies import engine
 from audio_analyzer.api.routers import jobs
+
+from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
@@ -43,6 +46,18 @@ app = FastAPI(
     description="Gelişmiş Ses Analizi ve Konuşmacı Ayrıştırma Platformu Web Arayüzü",
     version="1.0.0",
     lifespan=lifespan,
+)
+
+# CORS Middleware (Kurumsal Üçüncü Parti İstemci Desteği)
+allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "*")
+allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # APIRouter Kaydı
@@ -101,7 +116,11 @@ def start():
     """Uvicorn sunucusu üzerinden FastAPI API'sini başlatır."""
     import uvicorn
 
-    uvicorn.run("audio_analyzer.api.main:app", host="0.0.0.0", port=8000, reload=True)
+    reload_env = os.getenv("RELOAD", "false").lower() == "true"
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+
+    uvicorn.run("audio_analyzer.api.main:app", host=host, port=port, reload=reload_env)
 
 
 if __name__ == "__main__":
