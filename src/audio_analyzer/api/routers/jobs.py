@@ -296,16 +296,28 @@ async def get_job_audio_file(
         raise HTTPException(status_code=404, detail="Ses analizi görevi bulunamadı.")
 
     storage = get_storage_adapter()
+
+    # RAM (%100 0-Disk I/O) veya S3 depolamadan doğrudan bellek akışı (Streaming)
+    if hasattr(storage, "get_bytes"):
+        try:
+            audio_bytes = storage.get_bytes(record.storage_uri)
+            if audio_bytes and len(audio_bytes) > 0:
+                media_type, _ = mimetypes.guess_type(record.file_name)
+                if not media_type:
+                    media_type = "audio/wav"
+                return Response(content=audio_bytes, media_type=media_type)
+        except Exception as e:
+            logger.warning("RAM storage get_bytes note: %s", e)
+
     local_path = storage.get_path(record.storage_uri)
+    if os.path.exists(local_path):
+        media_type, _ = mimetypes.guess_type(local_path)
+        if not media_type:
+            media_type = "audio/wav"
+        return FileResponse(path=local_path, media_type=media_type, filename=record.file_name)
 
-    if not os.path.exists(local_path):
-        raise HTTPException(status_code=404, detail="Ses dosyası diskte bulunamadı.")
+    raise HTTPException(status_code=404, detail="Ses dosyası depolamada veya diskte bulunamadı.")
 
-    media_type, _ = mimetypes.guess_type(local_path)
-    if not media_type:
-        media_type = "audio/wav"
-
-    return FileResponse(path=local_path, media_type=media_type, filename=record.file_name)
 
 
 @router.delete("/jobs/{job_id}")
