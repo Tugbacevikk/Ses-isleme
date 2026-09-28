@@ -16,6 +16,8 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/audio_db
       - REDIS_URL=redis://redis:6379/0
       - USE_REDIS_STREAM=true
+      - STORAGE_TYPE=disk
+      - STORAGE_DIR=/app/storage/raw
       - WHISPER_MODEL_SIZE=small
     volumes:
       - audio_storage:/app/storage
@@ -37,6 +39,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/audio_db
       - REDIS_URL=redis://redis:6379/0
+      - STORAGE_TYPE=disk
+      - STORAGE_DIR=/app/storage/raw
       - WHISPER_MODEL_SIZE=small
     volumes:
       - audio_storage:/app/storage

@@ -36,6 +36,10 @@ async def lifespan(app: FastAPI):
     FastAPI Uygulama Yaşam Döngüsü (Lifespan).
     Sunucu başlatılırken veritabanı tablolarını asenkron olarak oluşturur ve AI modellerini önceden ısıtır (Warm-load).
     """
+    from audio_analyzer.adapters.storage.storage_factory import assert_storage_shared_across_processes
+
+    assert_storage_shared_across_processes()
+
     try:
         async with dependencies.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)

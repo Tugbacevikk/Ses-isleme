@@ -26,6 +26,11 @@ def sanitize_error_message(ex: Exception) -> str:
     return f"{err_type}: {err_str}"
 
 
+def _read_file(path: str) -> bytes:
+    with open(path, "rb") as f:
+        return f.read()
+
+
 class JobService:
     """
     Ses Analiz İşleri ve Görev Yaşam Döngüsü Servisi (Job Lifecycle Service).
@@ -78,15 +83,13 @@ class JobService:
         try:
             import os
 
-            local_audio_path = self.storage.get_path(record.storage_uri)
-
             # Pipeline çalıştır (Sıcak Yüklenmiş Singleton)
             if self.pipeline is None:
                 from audio_analyzer.services.pipeline_factory import get_shared_pipeline
 
                 self.pipeline = get_shared_pipeline()
 
-            # file_bytes verilmemişse storage (RAM/S3) veya diskten RAM'e oku
+            # file_bytes verilmemişse storage'dan oku (Lazy get_bytes / get_path)
             if not file_bytes:
                 if hasattr(self.storage, "get_bytes"):
                     try:
@@ -94,12 +97,13 @@ class JobService:
                     except Exception as ex:
                         logger.warning("Storage'dan RAM baytları okunamadı (%s): %s", record.storage_uri, ex)
 
-                if not file_bytes and os.path.exists(local_audio_path):
+                if not file_bytes:
                     try:
-                        with open(local_audio_path, "rb") as f:
-                            file_bytes = f.read()
+                        p = await asyncio.to_thread(self.storage.get_path, record.storage_uri)
+                        if p and os.path.exists(p):
+                            file_bytes = await asyncio.to_thread(_read_file, p)
                     except Exception as ex:
-                        logger.warning("Dosya RAM'e okunamadı (%s), disk path'e düşülüyor: %s", local_audio_path, ex)
+                        logger.warning("Dosya diski üzerinden RAM'e okunamadı: %s", ex)
 
             # RAM tabanlı 0-Disk I/O işleme (process_bytes) ile güvenli fallback (Non-blocking Thread)
             if file_bytes and hasattr(self.pipeline, "process_bytes"):
@@ -109,12 +113,14 @@ class JobService:
                     )
                 except Exception as p_err:
                     logger.warning("RAM (process_bytes) işleme uyarısı (%s), disk path yöntemine düşülüyor.", p_err)
+                    local_path = await asyncio.to_thread(self.storage.get_path, record.storage_uri)
                     utterances, language, overlap_summary = await asyncio.to_thread(
-                        self.pipeline.process, local_audio_path
+                        self.pipeline.process, local_path
                     )
             else:
+                local_path = await asyncio.to_thread(self.storage.get_path, record.storage_uri)
                 utterances, language, overlap_summary = await asyncio.to_thread(
-                    self.pipeline.process, local_audio_path
+                    self.pipeline.process, local_path
                 )
 
             # Başarılı ise sonuçları ve dili kaydet (COMPLETED)

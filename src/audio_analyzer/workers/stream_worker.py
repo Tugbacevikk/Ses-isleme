@@ -121,6 +121,11 @@ class RedisStreamWorker:
 
 
 async def start_worker_main():
+    os.environ.setdefault("USE_REDIS_STREAM", "true")
+    from audio_analyzer.adapters.storage.storage_factory import assert_storage_shared_across_processes
+
+    assert_storage_shared_across_processes()
+
     worker = RedisStreamWorker()
 
     loop = asyncio.get_running_loop()
