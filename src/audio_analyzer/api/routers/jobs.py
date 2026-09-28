@@ -11,11 +11,14 @@ from fastapi.responses import FileResponse, Response
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
+from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAdapter
 from audio_analyzer.adapters.storage.storage_factory import get_storage_adapter
 from audio_analyzer.api.dependencies import SessionLocal, get_repository, get_uow
+from audio_analyzer.api.rate_limiter import rate_limiter
 from audio_analyzer.domain.interfaces import ITranscriptRepository
 from audio_analyzer.domain.models import JobStatus, OverlapSummary, TranscriptUtterance
 from audio_analyzer.services.job_service import JobService
+from audio_analyzer.utils.file_validator import is_valid_audio_content
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +27,7 @@ router = APIRouter(prefix="/api/v1", tags=["Jobs & Analysis"])
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 ALLOWED_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
 MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB
+
 
 
 async def verify_api_key(api_key: Optional[str] = Depends(api_key_header)):
@@ -135,8 +139,6 @@ async def upload_and_analyze_audio(
             detail=f"Dosya boyutu çok büyük ({len(file_bytes) / (1024 * 1024):.1f} MB). Maksimum izin verilen limit: 100 MB.",
         )
 
-    from audio_analyzer.utils.file_validator import is_valid_audio_content
-
     if not is_valid_audio_content(file_bytes, file.filename):
         raise HTTPException(
             status_code=400,
@@ -149,17 +151,15 @@ async def upload_and_analyze_audio(
         file_name=file.filename, file_bytes=file_bytes, callback_url=callback_url, external_id=external_id
     )
 
-
     use_redis_stream = os.getenv("USE_REDIS_STREAM", "false").lower() == "true" or os.getenv("USE_REDIS_QUEUE", "false").lower() == "true"
 
     if use_redis_stream:
         try:
-            from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAdapter
-
             stream_adapter = RedisStreamAdapter()
             await stream_adapter.publish_job(
                 job_id=str(job_id), file_name=file.filename, callback_url=callback_url
             )
+
             logger.info("Görüşme görevi %s başarıyla Redis Stream (XADD) akışına fırlatıldı.", job_id)
         except Exception as e:
             logger.error("Redis Stream (XADD) yayını başarısız oldu (%s). Kayıt PENDING kaldı, Sweeper toparlayacak.", e)

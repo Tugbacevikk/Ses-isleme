@@ -21,19 +21,20 @@ def test_rtf_audio_dsp_benchmark(tmp_path):
     assert metadata["duration_sec"] > 0
 
     dsp = RustAudioDSPProcessor()
-    dummy_signal = [0.01 * (i % 100) for i in range(16000 * int(duration))]
+    dummy_signal_48k = [0.01 * (i % 100) for i in range(48000 * int(duration))]
 
     start_time = time.perf_counter()
-    resampled = dsp.fast_resample(dummy_signal, original_sr=16000)
-    vad_flags = dsp.fast_vad_energy(dummy_signal, frame_size=512, threshold=0.02)
+    resampled = dsp.fast_resample(dummy_signal_48k, original_sr=48000)
+    vad_flags = dsp.fast_vad_energy(resampled, frame_size=512, threshold=0.02)
     processing_time = time.perf_counter() - start_time
 
     rtf = processing_time / duration
 
     print(
-        f"\n[BENCHMARK] Ses Süresi: {duration:.2f}s | İşleme Süresi: {processing_time:.4f}s | RTF: {rtf:.4f}"
+        f"\n[BENCHMARK 48k->16k] Ses Süresi: {duration:.2f}s | İşleme Süresi: {processing_time:.4f}s | RTF: {rtf:.4f}"
     )
 
-    assert len(resampled) == len(dummy_signal)
+    assert len(resampled) == 16000 * int(duration)
     assert len(vad_flags) > 0
     assert rtf < 1.0, f"RTF performansı 1.0 altında olmalıdır (Ölçülen: {rtf:.4f})"
+

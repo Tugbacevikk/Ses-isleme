@@ -54,6 +54,11 @@ class AudioRecordModel(Base):
         back_populates="audio_record", cascade="all, delete-orphan"
     )
 
+    __table_args__ = (
+        Index("idx_audio_records_status_created", "status", "created_at"),
+    )
+
+
 
 class TranscriptUtteranceModel(Base):
     """

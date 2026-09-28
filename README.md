@@ -66,39 +66,41 @@ python run_analysis.py --audio storage/raw/ornek_ses.wav
 pytest
 ```
 
-### 5. Rust PyO3 Native DSP Performans Modülü (Opsiyonel)
-Sistem, Rust ile yazılmış C-hızında 0-latency DSP (resampling, VAD energy, cosine similarity) modülüne sahiptir (`native/` klasörü). 
-Rust compiler (`cargo`) sisteminizde yüklüyse native modülü derleyebilirsiniz:
-
-```bash
-# Maturin aracını yükleyin ve Rust C-extension modülünü derleyin
-pip install maturin
-maturin develop --manifest-path native/Cargo.toml
-```
-
-*Not: Rust derlenmediğinde sistem otomatik olarak NumPy tabanlı Python fallback modülünü çalıştırır.*
+### 5. Rust PyO3 Native DSP Modülü (Deneysel / Kullanılmıyor)
+*Not: `experimental/native/` klasöründeki Rust modülü deneyseldir ve varsayılan üretim akışında kullanılmamaktadır (NumPy/SciPy polyphase resample ve NumPy vectorization işlemleri standart olarak yürütülür).*
 
 ---
 
-## Veritabanı ve Alembic Migrasyon Stratejisi
+## 📊 Gözlemlenebilirlik & Metrikler (Prometheus)
 
-Sistem, **Dialect-Agnostic SQLAlchemy ORM** ve **Alembic** entegrasyonu ile veritabanı şemalarını esnek şekilde yönetir:
+- **Prometheus Metrik Endpoint'i:** `GET /metrics`
+  - `audio_queue_depth`: Redis Stream (`audio_analysis_stream`) kuyruk derinliği (`XLEN`).
+  - `audio_pending_jobs_count`: Veritabanında bekleyen `PENDING` iş sayısı.
+  - `audio_oldest_message_age_seconds`: Akıştaki en eski işlenmemiş mesajın yaşı.
+  - `audio_pipeline_stage_duration_seconds`: Aşamaların (decode, denoise, VAD, STT, diarize, refine) çalışma süresi histogramı.
+  - `audio_jobs_total`: Yaşam döngüsü durum sayaçları (`COMPLETED`, `FAILED`, `RETRY`).
+  - `audio_dlq_jobs_total`: Dead-Letter Stream (DLQ) akışına aktarılan iş sayısı.
+  - `audio_webhook_deliveries_total`: Webhook teslim durumları (`SUCCESS`, `FAILED`, `DEAD`).
+- **Liveness & Readiness Probes:**
+  - Liveness: `GET /health`
+  - Readiness: `GET /health/ready` (DB + Redis + Model hazır kontrolü).
 
-- **Geliştirme / Yerel Ortam (Development & Test)**:
-  `api/main.py` (FastAPI lifespan) ve `run_analysis.py` (CLI runner) yerel hızlı geliştirme için `Base.metadata.create_all(bind=engine)` yöntemini kullanır. Veritabanı dosyası (`dev_database.db`) yoksa otomatik oluşturulur.
-- **Canlı / Staging Ortamı (Production / Staging Schema Management)**:
-  Canlı ortamlarda veritabanı şemalarını versiyonlamak ve veri kaybı olmadan güncellemek için `alembic` kullanılır:
+---
 
-  ```bash
-  # Canlı veritabanını en son migrasyon seviyesine yükseltme
-  alembic upgrade head
+## 🧹 Veri Saklama Süreleri (Retention) & S3 Lifecycle
 
-  # Mevcut canlı veritabanı migrasyon durumunu kontrol etme
-  alembic current
+### 1. Otomatik Temizlik Betiği
+- **`AUDIO_RETENTION_HOURS`** (varsayılan: 24 saat): `COMPLETED` / `FAILED` durumundaki işlerin ham ses dosyaları disktan temizlenir.
+- **`RESULT_RETENTION_DAYS`** (varsayılan: 30 gün): Veritabanı sonuç kayıtları temizlenir.
 
-  # Modellerde yeni bir alan tanımlandığında otomatik migrasyon dosyası üretme
-  alembic revision --autogenerate -m "Şema güncelleme açıklaması"
-  ```
+```bash
+python scripts/cleanup_retention.py --retention-hours 24 --retention-days 30
+```
+
+### 2. AWS S3 Lifecycle Policy (Opsiyonel)
+S3 kullanıldığında nesne silme maliyetini ve depolamayı otomatikleştirmek için AWS S3 Bucket Lifecycle kuralı eklenmesi önerilir:
+- **Prefix:** `raw/`
+- **Expiration:** 1 Gün (24 Saat sonra nesnelerin S3 tarafından otomatik silinmesi).
 
 ---
 
@@ -133,6 +135,7 @@ $$\text{Gereken Çekirdek Sayısı} = \frac{\text{Toplam Ses Süresi (sn)} \time
 ```bash
 python scripts/benchmark_cpu.py --audio-dir ./storage --models tiny,small --profiles feedback,full --threads 4
 ```
+
 
 
 

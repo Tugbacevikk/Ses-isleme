@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from audio_analyzer.adapters.repository.models import Base
-from audio_analyzer.api import dependencies
+from audio_analyzer.api import dependencies, metrics
 from audio_analyzer.api.routers import jobs
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,29 +34,37 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """
     FastAPI Uygulama Yaşam Döngüsü (Lifespan).
-    Sunucu başlatılırken veritabanı tablolarını asenkron olarak oluşturur ve AI modellerini önceden ısıtır (Warm-load).
+    Üretim (PostgreSQL) ortamlarında tek şema kaynağı Alembic'tir.
+    `create_all` yalnızca yerel SQLite dev/test modunda tabloları otomatik oluşturur.
     """
     from audio_analyzer.adapters.storage.storage_factory import assert_storage_shared_across_processes
 
     assert_storage_shared_across_processes()
 
+    allow_fallback = os.getenv("ALLOW_SQLITE_FALLBACK", "false").lower() == "true"
+    db_is_sqlite = "sqlite" in str(dependencies.engine.url)
+
     try:
-        async with dependencies.engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-    except Exception as db_err:
-        allow_fallback = os.getenv("ALLOW_SQLITE_FALLBACK", "false").lower() == "true"
-        if allow_fallback:
-            logger.warning(
-                "PostgreSQL bağlantısı kurulamadı (%s). ALLOW_SQLITE_FALLBACK=true olduğu için SQLite yedeğine geçiliyor.",
-                db_err,
-            )
-            dependencies.engine = dependencies.create_async_db_engine("sqlite:///storage/dev_database.db")
-            dependencies.AsyncSessionLocal.configure(bind=dependencies.engine)
+        from sqlalchemy import text
+
+        async with dependencies.engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        if db_is_sqlite:
             async with dependencies.engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+    except Exception as db_err:
+        if allow_fallback and not db_is_sqlite:
+            logger.warning("PostgreSQL bağlantısı başarısız, ALLOW_SQLITE_FALLBACK aktif. SQLite'a geçiliyor... Hata: %s", db_err)
+            fallback_url = "sqlite:///storage/dev_database.db"
+            dependencies.engine = dependencies.create_async_db_engine(fallback_url)
+            dependencies.AsyncSessionLocal.configure(bind=dependencies.engine)
+            dependencies.SessionLocal = dependencies.AsyncSessionLocal
+            async with dependencies.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+        elif db_is_sqlite:
+            logger.warning("SQLite tablo oluşturma uyarısı: %s", db_err)
         else:
-            logger.critical("Veritabanı bağlantı hatası (ALLOW_SQLITE_FALLBACK=false): %s", db_err)
-            raise db_err
+            logger.error("PostgreSQL bağlantı hatası: %s", db_err)
 
     try:
         from audio_analyzer.services.pipeline_factory import get_shared_pipeline
@@ -89,6 +97,7 @@ app.add_middleware(
 
 # APIRouter Kaydı
 app.include_router(jobs.router)
+app.include_router(metrics.router)
 
 # Statik Dosya Hizmeti
 STATIC_DIR = Path(__file__).parent / "static"
@@ -118,8 +127,7 @@ async def favicon():
 @app.get("/health")
 async def health_check():
     """
-    Sistem Sağlık ve Kullanılabilirlik (Liveness/Readiness Probe) Kontrolü.
-    Veritabanı bağlantısı ve genel uygulama durumunu kontrol eder.
+    Sistem Sağlık ve Kullanılabilirlik (Liveness Probe) Kontrolü.
     """
     db_status = "OK"
     try:
@@ -139,6 +147,67 @@ async def health_check():
     )
 
 
+@app.get("/health/ready")
+async def readiness_check():
+    """
+    Kubernetes / Docker Readiness Probe Kontrolü.
+    Veritabanı (DB), Redis kuyruğu ve AI Model hazırlık durumunu doğrular.
+    """
+    import json
+
+    db_ok = False
+    redis_ok = False
+    model_ok = False
+
+    # 1. DB Kontrolü
+    try:
+        from sqlalchemy import text
+
+        async with dependencies.engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception as ex:
+        logger.error("Readiness DB kontrol hatası: %s", ex)
+
+    # 2. Redis Kontrolü
+    try:
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAdapter
+        import redis.asyncio as aioredis
+
+        pool = RedisStreamAdapter.get_pool(redis_url)
+        client = aioredis.Redis(connection_pool=pool)
+        pong = await client.ping()
+        redis_ok = bool(pong)
+    except Exception as ex:
+        logger.warning("Readiness Redis kontrol uyarısı: %s", ex)
+
+    # 3. Model Yüklü Kontrolü
+    try:
+        from audio_analyzer.services.pipeline_factory import get_shared_pipeline
+
+        pipe = get_shared_pipeline()
+        model_ok = pipe.stt_engine is not None and getattr(pipe.stt_engine, "_model", None) is not None
+    except Exception as ex:
+        logger.warning("Readiness Model kontrol uyarısı: %s", ex)
+
+    is_ready = db_ok and redis_ok
+    status_code = 200 if is_ready else 503
+
+    return Response(
+        content=json.dumps(
+            {
+                "status": "READY" if is_ready else "NOT_READY",
+                "database": "OK" if db_ok else "ERROR",
+                "redis": "OK" if redis_ok else "ERROR",
+                "model_loaded": "OK" if model_ok else "PENDING",
+            }
+        ),
+        media_type="application/json",
+        status_code=status_code,
+    )
+
+
 def start():
     """Uvicorn sunucusu üzerinden FastAPI API'sini başlatır."""
     import uvicorn
@@ -152,3 +221,4 @@ def start():
 
 if __name__ == "__main__":
     start()
+

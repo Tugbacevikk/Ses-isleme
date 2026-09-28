@@ -46,6 +46,7 @@ build/
 
 # Rust Native Targets
 native/target/
+experimental/native/target/
 
 # Workflows
 .github/
