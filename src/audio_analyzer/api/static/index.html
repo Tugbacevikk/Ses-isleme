@@ -770,6 +770,9 @@
             const statusElem = document.getElementById('audioClipStatus');
             if (!player) return;
 
+            // 1. Önce oynatıcıyı durdur ve zaman aralığını ayarla
+            player.pause();
+
             // Kart görsel vurgulama
             document.querySelectorAll('.utterance-card').forEach(c => c.style.borderColor = 'rgba(255, 255, 255, 0.05)');
             const cards = document.querySelectorAll('.utterance-card');
@@ -778,34 +781,35 @@
                 cards[cardIndex].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
 
-            currentClipEndTime = endTime;
+            // Kelimenin başındaki ilk harfin kesilmemesi için 0.1s minik bir tamponla başlat
+            const numStart = parseFloat(startTime) || 0;
+            const targetStart = Math.max(0, numStart - 0.1);
+            currentClipEndTime = parseFloat(endTime) || null;
+
             if (statusElem) {
                 statusElem.textContent = `▶️ Oynatılıyor: ${formatTime(startTime)} - ${formatTime(endTime)}`;
             }
 
-            const startPlaybackAtTime = () => {
+            const seekAndPlay = () => {
                 try {
-                    player.currentTime = startTime;
+                    player.currentTime = targetStart;
                 } catch (e) {
                     console.warn('currentTime ayarlanırken uyarı:', e);
                 }
                 const playPromise = player.play();
-                if (playPromise !== undefined) {
-                    playPromise.then(() => {
-                        // Playback başladığında tam zaman damgasına sıçramayı garanti et
-                        player.currentTime = startTime;
-                    }).catch(err => {
+                if (playPromise && typeof playPromise.catch === 'function') {
+                    playPromise.catch(err => {
                         console.warn('Ses oynatma uyarısı:', err);
                     });
                 }
             };
 
             if (player.readyState >= 1) {
-                startPlaybackAtTime();
+                seekAndPlay();
             } else {
                 const onMeta = () => {
                     player.removeEventListener('loadedmetadata', onMeta);
-                    startPlaybackAtTime();
+                    seekAndPlay();
                 };
                 player.addEventListener('loadedmetadata', onMeta);
                 player.load();
