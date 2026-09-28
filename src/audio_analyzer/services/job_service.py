@@ -70,20 +70,28 @@ class JobService:
     ) -> bool:
         """
         Arka plan worker'ı (Celery, RQ, BackgroundTasks) tarafından çağrılır.
-        Durumu 'PROCESSING' yapar, pipeline'ı çalıştırır, sonuçları DB'ye kaydeder ('COMPLETED'/'FAILED')
-        ve tanımlıysa webhook callback bildirimini tetikler.
+        Kısa transaction ile durumu 'PROCESSING' yapar, DB bağlantısını serbest bırakarak pipeline'ı çalıştırır,
+        sonuçları yeni bir kısa transaction ile DB'ye kaydeder ('COMPLETED'/'FAILED').
         """
-        record = await self.repo.get_record_by_id(record_id)
-        if not record:
+        import os
+
+        stale_sec = int(os.getenv("PROCESSING_STALE_SEC", "1800"))
+
+        # Kısa Transaction 1: Atomik olarak işi devral (PENDING -> PROCESSING) ve hemen commit et
+        claimed, record, is_completed = await self.repo.claim_job_atomically(
+            record_id, stale_seconds=stale_sec
+        )
+
+        if is_completed:
+            logger.info("Job %s zaten COMPLETED durumunda, tekrar çalıştırılmıyor ve True dönülüyor.", record_id)
+            return True
+
+        if not claimed or not record:
+            logger.info("Job %s başka bir worker tarafından işleniyor veya zaman aşımına uğramamış, atlanıyor.", record_id)
             return False
 
-        # Durumu PROCESSING yap
-        await self.repo.update_status(record_id, JobStatus.PROCESSING)
-
+        # --- DB BAĞLANTISI SERBEST: AI Pipeline (CPU/GPU) Thread Pool'da Yürütülür ---
         try:
-            import os
-
-            # Pipeline çalıştır (Sıcak Yüklenmiş Singleton)
             if self.pipeline is None:
                 from audio_analyzer.services.pipeline_factory import get_shared_pipeline
 

@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,6 +71,52 @@ class PostgresRepository(ITranscriptRepository):
         if not orm_model:
             return None
         return self._to_domain(orm_model)
+
+    async def claim_job_atomically(
+        self, record_id: uuid.UUID, stale_seconds: int = 1800
+    ) -> Tuple[bool, Optional[AudioRecord], bool]:
+        from datetime import datetime, timedelta, timezone
+        from sqlalchemy import update
+
+        record = await self.get_record_by_id(record_id)
+        if not record:
+            return False, None, False
+
+        if record.status == JobStatus.COMPLETED:
+            return True, record, True
+
+        now = datetime.now(timezone.utc)
+        stale_threshold = now - timedelta(seconds=stale_seconds)
+
+        stmt = (
+            update(AudioRecordModel)
+            .where(
+                AudioRecordModel.id == record_id,
+                (AudioRecordModel.status == JobStatus.PENDING.value)
+                | (
+                    (AudioRecordModel.status == JobStatus.PROCESSING.value)
+                    & (AudioRecordModel.updated_at < stale_threshold)
+                ),
+            )
+            .values(
+                status=JobStatus.PROCESSING.value,
+                updated_at=now,
+            )
+        )
+
+        res = await self.session.execute(stmt)
+        affected = res.rowcount
+        await self._commit_or_flush()
+        self.session.expire_all()
+
+        if affected > 0:
+            updated_record = await self.get_record_by_id(record_id)
+            return True, updated_record or record, False
+        else:
+            current_record = await self.get_record_by_id(record_id)
+            if current_record and current_record.status == JobStatus.COMPLETED:
+                return True, current_record, True
+            return False, current_record, False
 
     async def update_status(
         self, record_id: uuid.UUID, status: JobStatus, error_message: Optional[str] = None

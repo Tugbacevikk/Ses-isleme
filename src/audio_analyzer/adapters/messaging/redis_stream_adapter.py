@@ -174,3 +174,22 @@ class RedisStreamAdapter:
         except Exception as e:
             logger.warning("xautoclaim note: %s", e)
             return []
+
+    async def claim_message_heartbeat(self, consumer_name: str, message_id: str) -> bool:
+        """
+        Uzun süren işlerde mesajın idle süresini sıfırlayarak (heartbeat)
+        başka bir worker'ın XAUTOCLAIM ile devralmasını engeller (`XCLAIM min_idle=0`).
+        """
+        client = self.get_client()
+        try:
+            res = await client.xclaim(
+                name=self.stream_key,
+                groupname=self.group_name,
+                consumername=consumer_name,
+                min_idle_time=0,
+                message_ids=[message_id],
+            )
+            return bool(res)
+        except Exception as e:
+            logger.warning("xclaim heartbeat note for msg_id=%s: %s", message_id, e)
+            return False

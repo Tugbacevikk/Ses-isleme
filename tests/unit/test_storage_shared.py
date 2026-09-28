@@ -152,6 +152,7 @@ async def test_job_service_execute_job_lazy_get_path():
         status=JobStatus.PENDING,
     )
     mock_repo.get_record_by_id.return_value = mock_record
+    mock_repo.claim_job_atomically.return_value = (True, mock_record, False)
     mock_repo.update_status.return_value = True
     mock_repo.save_utterances.return_value = True
 

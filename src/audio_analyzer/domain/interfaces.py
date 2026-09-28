@@ -49,6 +49,13 @@ class ITranscriptRepository(ABC):
         pass
 
     @abstractmethod
+    async def claim_job_atomically(
+        self, record_id: uuid.UUID, stale_seconds: int = 1800
+    ) -> Tuple[bool, Optional[AudioRecord], bool]:
+        """İşi atomik olarak PENDING -> PROCESSING yapar (claimed, record, is_completed döner)."""
+        pass
+
+    @abstractmethod
     async def update_status(
         self, record_id: uuid.UUID, status: JobStatus, error_message: Optional[str] = None
     ) -> bool:

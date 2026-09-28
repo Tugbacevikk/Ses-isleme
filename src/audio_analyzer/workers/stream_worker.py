@@ -14,6 +14,10 @@ from audio_analyzer.services.job_service import JobService
 logger = logging.getLogger(__name__)
 
 
+import contextlib
+import time
+
+
 class RedisStreamWorker:
     """
     Redis Streams Tüketici Grubu (Consumer Group) Worker Hizmeti.
@@ -30,6 +34,14 @@ class RedisStreamWorker:
         self.adapter = adapter or RedisStreamAdapter()
         self.running = False
 
+    async def _heartbeat_loop(self, msg_id: str, interval_sec: float = 15.0):
+        try:
+            while self.running:
+                await asyncio.sleep(interval_sec)
+                await self.adapter.claim_message_heartbeat(self.consumer_name, msg_id)
+        except asyncio.CancelledError:
+            pass
+
     async def process_single_message(self, msg_id: str, fields: dict) -> bool:
         """Tek bir Redis Stream mesajını çözer, JobService ile yürütür ve XACK onaylar."""
         job_id_str = fields.get("job_id")
@@ -38,6 +50,7 @@ class RedisStreamWorker:
             await self.adapter.ack_message(msg_id)
             return False
 
+        hb_task = asyncio.create_task(self._heartbeat_loop(msg_id))
         try:
             record_id = uuid.UUID(job_id_str)
             uow = SqlAlchemyUnitOfWork(session_factory=AsyncSessionLocal)
@@ -67,22 +80,34 @@ class RedisStreamWorker:
                 exc_info=True,
             )
             return False
+        finally:
+            hb_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await hb_task
 
     async def run(self):
         """Worker döngüsünü başlatır (XREADGROUP + XAUTOCLAIM)."""
         self.running = True
-        logger.info("Redis Stream Worker başlatılıyor: consumer_name=%s", self.consumer_name)
+        prefetch_count = int(os.getenv("WORKER_PREFETCH", "1"))
+        min_idle_ms = int(os.getenv("STREAM_CLAIM_IDLE_MS", "900000"))
+        claim_interval_sec = float(os.getenv("STREAM_CLAIM_INTERVAL_SEC", "60"))
+
+        logger.info(
+            "Redis Stream Worker başlatılıyor: consumer_name=%s, prefetch=%d, claim_idle_ms=%d",
+            self.consumer_name,
+            prefetch_count,
+            min_idle_ms,
+        )
 
         await self.adapter.create_consumer_group()
-
-        claim_counter = 0
+        last_claim_time = time.monotonic()
 
         while self.running:
             try:
-                # 1. Okunmamış mesajları XREADGROUP ile çek
+                # 1. Okunmamış mesajları XREADGROUP ile çek (WORKER_PREFETCH)
                 messages = await self.adapter.consume_messages(
                     consumer_name=self.consumer_name,
-                    count=10,
+                    count=prefetch_count,
                     block_ms=1000,
                 )
 
@@ -91,14 +116,14 @@ class RedisStreamWorker:
                         break
                     await self.process_single_message(msg_id, fields)
 
-                # 2. Periyodik olarak (her 10 döngüde bir) yarım kalan yetim mesajları XAUTOCLAIM ile devral
-                claim_counter += 1
-                if claim_counter >= 10:
-                    claim_counter = 0
+                # 2. Periyodik olarak (zamana bağlı STREAM_CLAIM_INTERVAL_SEC) yetim mesajları XAUTOCLAIM ile devral
+                now = time.monotonic()
+                if now - last_claim_time >= claim_interval_sec:
+                    last_claim_time = now
                     claimed = await self.adapter.claim_pending_messages(
                         consumer_name=self.consumer_name,
-                        min_idle_time_ms=60000,
-                        count=5,
+                        min_idle_time_ms=min_idle_ms,
+                        count=prefetch_count,
                     )
                     for msg_id, fields in claimed:
                         logger.info(
