@@ -78,10 +78,11 @@ sesAnalizi/
 │   │   │   ├── postgres_repository.py # Async SQLAlchemy PostgreSQL veritabanı CRUD işlemleri
 │   │   │   └── unit_of_work.py    # Veritabanı işlemlerini güvenli paketleyen (Transaction) sınıf
 │   │   ├── storage/
-│   │   │   ├── in_memory_storage_adapter.py # Ses baytlarını diske yazmadan bellekte tutan 0-Disk RAM adaptörü
+│   │   │   ├── local_disk_storage_adapter.py # Atomik yazmalı paylaşımlı disk depolama adaptörü (STORAGE_TYPE=disk)
+│   │   │   ├── in_memory_storage_adapter.py # Thread-safe RAM depolama adaptörü (STORAGE_TYPE=memory)
 │   │   │   ├── ram_storage_adapter.py # RAM depolama adaptörü arayüz bağlayıcısı
-│   │   │   ├── s3_storage_adapter.py  # AWS S3 / MinIO bulut depolama adaptörü
-│   │   │   └── storage_factory.py     # RAM veya S3 deposunu seçen fabrika
+│   │   │   ├── s3_storage_adapter.py  # AWS S3 / MinIO bulut depolama adaptörü (STORAGE_TYPE=s3)
+│   │   │   └── storage_factory.py     # Süreçler arası paylaşımlı depolama korumalı fabrika (assert_storage_shared_across_processes)
 │   │   └── messaging/
 │   │       └── redis_stream_adapter.py # Redis Stream asenkron mesajlaşma adaptörü
 │   │
