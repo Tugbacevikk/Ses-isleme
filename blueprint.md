@@ -1,5 +1,5 @@
 # 📘 DETAYLI VE YÜZDE YÜZ EKSİKSİZ PROJE REHBERİ (BLUEPRINT)
-## 🎙️ Ses Analizi ve Konuşmacı Ayrıştırma Platformu
+## 🎙️ Yüksek Performanslı Kurumsal Ses Analizi ve Konuşmacı Ayrıştırma Platformu
 
 Bu rehber; projeyi **en basit haliyle**, teknik terimleri **açıklayarak** ve **projede bulunan tek bir dosya dahi atlanmadan** uçtan uca anlatmak için hazırlanmıştır. Sunumlarda, mülakatlarda veya projeyi savunurken aklınıza gelebilecek tüm soruların cevabı buradadır.
 
@@ -7,13 +7,19 @@ Bu rehber; projeyi **en basit haliyle**, teknik terimleri **açıklayarak** ve *
 
 ## 💡 1. EN BASİT ANLATIMLA: BU PROJE NE İŞE YARAR?
 
-Hayal edin: 1 saatlik bir şirket toplantısı kaydınız veya müşteri temsilcisi ile bir müşterinin telefon konuşması var.
-- **Standart Sistemler Neler Yapar?**: Sadece sesteki konuşmaları düz bir metin olarak yan yana yazar. Ama kimin ne zaman konuştuğunu bilemezsiniz.
+Hayal edin: Tek seferde kuyruğa giren **~4000 sesli mesaj** (müşteri temsilcisi - müşteri görüşmeleri, geri bildirim sesleri) var ve GPU bulunmayan CPU sunucularında sıfır iş kaybı ve mükerrer işleme olmadan hedef sürede işlenmesi gerekiyor.
+
+- **Standart Sistemler Neler Yapar?**: Sadece sesteki konuşmaları düz bir metin olarak yan yana yazar. Kimin ne zaman konuştuğunu bilemez, kuyruk kilitlendiğinde aynı işi defalarca işler, veritabanını şişirir.
 - **Bizim Sistemimiz Ne Yapar?**:
-  1. Ses kaydındaki konuşmaları **kelime kelime metne çevirir** (Speech-to-Text).
-  2. Ses tonlarından ve biyometrik ses özelliklerinden **kimin konuştuğunu ayırt eder** (Konuşmacı 1, Konuşmacı 2 vb.).
+  1. Ses kaydındaki konuşmaları **kelime kelime metne çevirir** (Speech-to-Text: Faster-Whisper).
+  2. Ses tonlarından ve biyometrik ses özelliklerinden **kimin konuştuğunu ayırt eder** (SpeechBrain ECAPA-TDNN).
   3. Bu iki bilgiyi **milisaniye hassasiyetinde birleştirir**: *"Müşteri Temsilcisi 00:00 ile 00:06 arasında 'Buyurun nasıl yardımcı olabilirim' dedi, Müşteri 00:06 ile 00:34 arasında 'Merhaba ben Elif...' dedi."*
-  4. Web sayfasında transkripti gösterir, kullanıcının konuşmacı isimlerini veya metindeki hataları **canlı düzenlemesine**, yeni konuşmacı blokları **eklemesine/silmesine**, sesi **parça parça dinlemesine** ve metni **TXT, SRT (altyazı) veya JSON** olarak indirmesine olanak tanır.
+  4. **Kurumsal Entegrasyon & Dayanıklılık (Resilience)**:
+     - **Tenant Idempotency (`external_id`)**: Aynı mesaj tekrar geldiğinde mükerrer analiz açmaz.
+     - **Transactional Webhook Outbox Pattern**: Analiz sonucu veritabanına yazıldığı anda **aynı transaction'da** webhook outbox tablosuna yazılır; `webhook_worker` HMAC-SHA256 imzası ve üstel backoff ile teslim eder.
+     - **Heartbeat & Atomic Claiming**: Uzun süren CPU işlerinde mesajın kilit süresi periyodik yenilenir, çöken işler `sweeper` servisiyle otomatik kurtarılır veya `audio_analysis_dlq` dead-letter akışına aktarılır.
+     - **Gözlemlenebilirlik & Temizlik**: Prometheus `/metrics` ile kuyruk derinliği, pending sayıları ve aşama süreleri izlenir. `RetentionService` ile zamanı dolan ham sesler ve DB kayıtları otomatik temizlenir.
+  5. **Canlı Web UI**: Transkripti gösterir, kullanıcının konuşmacı isimlerini veya metindeki hataları **canlı düzenlemesine**, yeni konuşmacı blokları **eklemesine/silmesine**, sesi **parça parça dinlemesine** ve metni **TXT, SRT veya JSON** olarak indirmesine olanak tanır.
 
 ---
 
@@ -25,11 +31,12 @@ Projeyi anlatırken kullanacağınız temel kavramlar:
 - **Speaker Diarization (Konuşmacı Ayrıştırma)**: *"Kelimeler neler?"* sorusu yerine **"Şu anda kim konuşuyor?"** sorusuna yanıt arayan teknoloji. Projemizde %100 açık kaynak, token gerektirmeyen **SpeechBrain ECAPA-TDNN** kullanılır.
 - **Fusion Engine (Birleştirme Motoru)**: STT'den gelen kelimeler ile Diarization'dan gelen konuşmacı aralıklarını çakıştırıp *"Bu kelime kesinlikle şu konuşmacıya aittir"* kararını veren algoritmamız.
 - **Semantic Refiner (Anlamsal İyileştirici)**: Konuşma içerisindeki selamlama, geçiş veya rol ifadelerini (örn: *"Buyurun"*, *"Merhaba ben..."*) tespit ederek cümle ortasındaki konuşmacı değişimlerini anlamsal olarak bölen modülümüz.
-- **Clean Architecture (Temiz Mimari)**: Kodların çorba olmasını engelleyen, veritabanı veya web çerçevesi değişse bile iş mantığının hiç bozulmamasını sağlayan katmanlı tasarım mimarisi.
-- **Non-Blocking Async (Tıkanmayan Asenkron Yapı)**: Ağır yapay zeka işlemleri yaparken kullanıcı arayüzünün donmamasını sağlayan sistem (HTTP 202 Accepted yanıtı + Arka Plan Task/Worker mantığı).
-- **RAM Storage (0-Disk I/O Depolama)**: Yüklenen ses dosyalarını fiziksel diske geçici bayt yazmadan doğrudan sistem belleğinde (`ram://` URI) yüksek hızla işleme tekniği.
-- **Magic Bytes (Sihirli Baytlar)**: Bir dosyanın adının `.wav` olması yetmez. Dosya içeriğinin gerçek bir ses dosyası olup olmadığını anlamak için dosyanın ilk birkaç ikili (binary) baytına bakılmasıdır (`RIFF`, `ID3`, `fLaC` vb.).
-- **Rust/C DSP (Digital Signal Processing)**: Yüksek hızlı ses matematiksel hesaplamaları (vektör benzerliği, VAD enerji hesabı) için Python'a göre 50-100 kat hızlı çalışan gömülü Rust/C kodu.
+- **Transactional Outbox Pattern**: Analiz sonucu veritabanına yazılırken webhook teslimatının kaybolmaması için **aynı DB transaction'ı** içinde `webhook_deliveries` tablosuna satır yazılması ve ayrı bir `webhook_worker` tarafından asenkron teslim edilmesi mimarisi.
+- **Atomic Claiming & Heartbeat**: İki worker'ın aynı işi aynı anda almasını veritabanı seviyesinde `UPDATE ... WHERE status IN ('PENDING', stale) RETURNING` atomik sorgusuyla engelleme ve işlem sürerken kilit süresini XCLAIM ile tazeleyerek mükerrer işlemeyi önleme tekniği.
+- **Sweeper Daemon**: Redis kilidi (`sweeper_lock`) alarak askıda kalan (`PENDING`/stale `PROCESSING`) kayıtları periyodik tarayıp yeniden kuyruğa alan veya DLQ'ya taşıyan bağımsız servis.
+- **Clean Architecture**: Kodların çorba olmasını engelleyen, veritabanı veya web çerçevesi değişse bile iş mantığının hiç bozulmamasını sağlayan katmanlı tasarım mimarisi.
+- **Prometheus Observability**: Kuyruk derinliği (XLEN), bekleyen işler, aşama süre histogramları ve webhook teslim durumlarının `/metrics` endpoint'i üzerinden Prometheus formatında sunulması.
+- **Single Source of Truth (Alembic)**: Veritabanı şema değişikliklerinin üretim PostgreSQL ortamlarında yalnızca Alembic migration'ları ile yapılması (`main.py` lifespan'daki `create_all` sadece SQLite dev/test içindir).
 
 ---
 
@@ -39,72 +46,78 @@ Proje dizinindeki tüm güncel dosyalar ve ne iş yaptıkları:
 
 ```text
 sesAnalizi/
+├── alembic/                       # Veritabanı Şema Migrasyon Yönetimi (Single Source of Truth)
+│   ├── env.py                     # Dinamik DATABASE_URL ve SQLAlchemy Alembic bağlayıcısı
+│   └── versions/                  # Şema versiyon dosyaları (external_id, outbox, status_created index vb.)
+│
+├── scripts/                       # Yönetim Araçları ve CLI Komutları
+│   └── cleanup_retention.py       # RESULT_RETENTION_DAYS & AUDIO_RETENTION_HOURS veri temizleme CLI komutu
+│
 ├── src/audio_analyzer/            # Tüm kaynak kodların bulunduğu ana klasör
 │   ├── api/                       # Dış dünya ve kullanıcı ile iletişim katmanı
-│   │   ├── main.py                # FastAPI uygulamasının giriş noktası, log ve kütüphane yapılandırıcısı
-│   │   ├── dependencies.py        # Async SQLAlchemy PostgreSQL veritabanı ve servis bağımlılıkları (DI)
+│   │   ├── main.py                # FastAPI giriş noktası, lifespan, /health ve /health/ready probe'ları
+│   │   ├── dependencies.py        # Async SQLAlchemy PostgreSQL veritabanı ve DI bağımlılıkları
+│   │   ├── metrics.py             # Prometheus /metrics endpoint ve sayaç/histogram metrik tanımları
 │   │   ├── routers/
-│   │   │   └── jobs.py            # /analyze, /jobs, /jobs/{id}, /audio gibi tüm REST API uç noktaları
+│   │   │   └── jobs.py            # /analyze, /jobs, /jobs/{id}, /audio vb. REST API uç noktaları
 │   │   └── static/
-│   │       └── index.html         # Cam efektli (Glassmorphism), maksimum 2 toast sınırlamalı Web Arayüzü
+│   │       └── index.html         # Cam efektli (Glassmorphism), maks 2 toast sınırlamalı Web UI
 │   │
 │   ├── domain/                    # Projenin beyni ve iş kuralları (Saf Python)
-│   │   ├── models.py              # AudioRecord, TranscriptUtterance, DiarizationSegment iş nesneleri
+│   │   ├── models.py              # AudioRecord, TranscriptUtterance, JobStatus, DeviceConfig modelleri
 │   │   └── interfaces.py          # Veritabanı, STT, Diarizer ve Depolama için soyut arayüzler
 │   │
 │   ├── services/                  # İş kurallarının yürütüldüğü ana servisler
-│   │   ├── pipeline.py            # STT (Whisper) + Diarization (SpeechBrain) paralel eşzamanlı işleme hattı
-│   │   ├── pipeline_factory.py    # Yapay zeka modellerini bellekte tek bir sefer yükleyen (Singleton) fabrika
-│   │   ├── fusion_engine.py       # Kelimeler ile konuşmacı zaman aralıklarını IoU/Midpoint ile çakıştıran motor
-│   │   ├── semantic_refiner.py    # Rol geçiş ifadelerine göre konuşmacı kartlarını anlamsal olarak bölen modül
-│   │   ├── batch_inference_engine.py # Toplu ses analizi ve GPU dinamik batchleme motoru
-│   │   ├── job_service.py         # Analiz görevlerinin veritabanı durumunu yöneten ve hataları maskeleyen servis
+│   │   ├── pipeline.py            # STT + Diarization paralel işleme hattı (PIPELINE_PROFILE desteği)
+│   │   ├── pipeline_factory.py    # Modelleri bellekte tek sefer yükleyen Singleton fabrika
+│   │   ├── fusion_engine.py       # Kelimeler ile konuşmacı zaman aralıklarını çakıştıran motor
+│   │   ├── semantic_refiner.py    # Rol geçiş ifadelerine göre konuşmacı kartlarını anlamsal bölen modül
+│   │   ├── job_service.py         # Analiz durum yönetimi, atomik claim ve idempotency servisi
+│   │   ├── retention_service.py   # Zamana bağlı ham ses ve DB kaydı temizleme servisi
 │   │   ├── overlap_detector.py    # Çakışan konuşma süresini ve kesinti sayısını hesaplayan modül
-│   │   └── webhook_service.py     # HMAC-SHA256 imzalı asenkron callback/webhook bildirim servisi
+│   │   └── webhook_service.py     # HMAC-SHA256 imzalı asenkron callback/webhook servisi
 │   │
 │   ├── adapters/                  # Dış kütüphaneler, AI modelleri ve veritabanı bağlayıcıları
 │   │   ├── stt/
-│   │   │   └── faster_whisper_adapter.py # Faster-Whisper GPU/CPU Speech-to-Text motoru adaptörü
+│   │   │   └── faster_whisper_adapter.py # Faster-Whisper Speech-to-Text motoru adaptörü
 │   │   ├── audio/
 │   │   │   ├── audio_converter.py # FFmpeg/SoundFile ile ses formatı dönüştürme adaptörü
-│   │   │   ├── rust_dsp_adapter.py# C/Rust yerel DSP ivmelendirici modül adaptörü
+│   │   │   ├── rust_dsp_adapter.py# NumPy/SciPy varsayılanlı ses ivmelendirme adaptörü
 │   │   │   ├── silero_vad.py      # Silero / Energy VAD konuşma algılama adaptörü
 │   │   │   └── denoiser.py        # DeepFilterNet / spectral arka plan gürültü temizleme adaptörü
 │   │   ├── diarization/
-│   │   │   ├── speechbrain_adapter.py # %100 Token-Free SpeechBrain ECAPA-TDNN konuşmacı ayrıştırma motoru
+│   │   │   ├── speechbrain_adapter.py # Token-Free SpeechBrain ECAPA-TDNN konuşmacı ayrıştırma
 │   │   │   └── cluster_diarizer.py    # Lokal spektral kümeleme fallback motoru
 │   │   ├── repository/
-│   │   │   ├── models.py          # SQLAlchemy PostgreSQL veritabanı tabloları (audio_records, transcript_utterances)
-│   │   │   ├── postgres_repository.py # Async SQLAlchemy PostgreSQL veritabanı CRUD işlemleri
-│   │   │   └── unit_of_work.py    # Veritabanı işlemlerini güvenli paketleyen (Transaction) sınıf
+│   │   │   ├── models.py          # SQLAlchemy ORM tabloları (audio_records, transcript_utterances, webhook_deliveries)
+│   │   │   ├── postgres_repository.py # Async SQLAlchemy PostgreSQL CRUD & atomik claim işlemleri
+│   │   │   └── unit_of_work.py    # Veritabanı işlemlerini paketleyen (Transaction) sınıf
 │   │   ├── storage/
-│   │   │   ├── local_disk_storage_adapter.py # Atomik yazmalı paylaşımlı disk depolama adaptörü (STORAGE_TYPE=disk)
-│   │   │   ├── in_memory_storage_adapter.py # Thread-safe RAM depolama adaptörü (STORAGE_TYPE=memory)
-│   │   │   ├── ram_storage_adapter.py # RAM depolama adaptörü arayüz bağlayıcısı
-│   │   │   ├── s3_storage_adapter.py  # AWS S3 / MinIO bulut depolama adaptörü (STORAGE_TYPE=s3)
-│   │   │   └── storage_factory.py     # Süreçler arası paylaşımlı depolama korumalı fabrika (assert_storage_shared_across_processes)
+│   │   │   ├── local_disk_storage_adapter.py # Disk depolama adaptörü (STORAGE_TYPE=disk)
+│   │   │   ├── in_memory_storage_adapter.py # RAM depolama adaptörü (STORAGE_TYPE=memory)
+│   │   │   ├── s3_storage_adapter.py  # AWS S3 / MinIO depolama adaptörü (STORAGE_TYPE=s3)
+│   │   │   └── storage_factory.py     # Süreçler arası depolama paylaşım doğrulama fabrikası
 │   │   └── messaging/
-│   │       └── redis_stream_adapter.py # Redis Stream asenkron mesajlaşma adaptörü
+│   │       └── redis_stream_adapter.py # Redis Stream kuyruk adaptörü & sliding window rate limiter
 │   │
 │   ├── utils/                     # Yardımcı Araçlar
 │   │   ├── audio_io.py            # Ses dönüştürme ve format okuma araçları
-│   │   └── file_validator.py      # Sihirli Baytlar (Magic Header: RIFF, ID3, fLaC) ile güvenlik kontrolü
+│   │   └── file_validator.py      # Sihirli Baytlar (Magic Header: RIFF, ID3, fLaC) güvenlik kontrolü
 │   │
-│   └── workers/                   # Arka Plan Kuyruk İşçileri
-│       └── stream_worker.py       # Redis Stream / Async arka plan analiz işçisi
+│   └── workers/                   # Arka Plan Servis ve İşçileri
+│       ├── stream_worker.py       # Redis Stream asenkron analiz işçisi (Heartbeat & Claiming)
+│       ├── sweeper.py             # Askıda kalan işleri tarayıp re-publish eden Sweeper servisi
+│       └── webhook_worker.py      # Webhook Outbox tablosunu tarayıp HMAC ile teslim eden servis
 │
-├── native/                        # Performans için C / Rust DSP İvmelendirici Modül
-│   └── dsp_processor/             # VAD Enerji ve Vektör Benzerliği hesabı yapan C/Rust kodları
+├── experimental/                  # Deneysel / İzolasyon Klasörü
+│   └── native/                    # Çevrim dışı bırakılan Rust DSP kodları (NumPy/SciPy tercih edildi)
 │
-├── tests/                         # Otomatik Test Ekosistemi (51/51 PASSED %100 Başarı)
-│   ├── unit/                      # Birim testler (API, Servisler, Güvenlik, Dosya Doğrulama, Pipeline)
-│   ├── integration/               # Entegrasyon testleri (PostgreSQL DB, Storage, Webhook)
-│   └── benchmark/                 # İşlem hızı performans testi (RTF Benchmark)
+├── tests/                         # Otomatik Test Ekosistemi (69/69 PASSED %100 Başarı)
+│   ├── unit/                      # Birim testler (API, Servisler, Sweeper, Webhook, Metrics, Retention)
+│   ├── integration/               # Entegrasyon testleri (PostgreSQL DB, Storage, Fallback)
+│   └── benchmark/                 # 48kHz RTF İşlem hızı performans testi
 │
-├── storage/                       # Modellerin ve geçici verilerin tutulduğu dizin
-│   └── models/                    # Yerel indirilen yapay zeka modelleri (Whisper, SpeechBrain)
-│
-├── Dockerfile                     # Docker konteyner yapılandırma dosyası
+├── Dockerfile                     # Üretim Docker konteyner yapılandırma dosyası
 ├── docker-compose.yml             # PostgreSQL (audio_db:6432), Redis ve API'yi tek komutla kaldıran dosya
 ├── pyproject.toml                 # Proje bağımlılıkları ve Python ortam ayarları
 └── blueprint.md                   # Okuduğunuz bu master doküman
@@ -114,112 +127,113 @@ sesAnalizi/
 
 ## 🚶‍♂️ 4. ADIM ADIM BİR SES DOSYASININ YOLCULUK HARİTASI
 
-Kullanıcı web arayüzünden bir dosya seçip **"Yükle"** butonuna bastığında arka planda sırasıyla şu süreç işler:
+Kullanıcı veya Entegratör Sistem `POST /api/v1/analyze` ile bir dosya gönderdiğinde arka planda işleyen tam akış:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as 👤 Kullanıcı (Web UI)
+    actor Client as 🏢 İstemci / Web UI
     participant API as 🚀 FastAPI (jobs.py)
-    participant Val as 🛡️ File Validator
-    participant JobSvc as ⚙️ JobService
-    participant Pipe as 🧠 AI Pipeline (Whisper + SpeechBrain)
-    participant Fusion as 🔀 Fusion & Semantic Engine
+    participant Rate as ⏱️ Redis Rate Limiter
     participant DB as 🗄️ PostgreSQL DB (asyncpg)
+    participant Queue as 📥 Redis Stream
+    participant Worker as ⚙️ Stream Worker
+    participant Pipe as 🧠 AI Pipeline (Whisper + SpeechBrain)
+    participant Webhook as 📬 Webhook Worker
 
-    User->>API: 1. POST /api/v1/analyze (ses_dosyasi.mp3)
-    API->>Val: 2. Sihirli Bayt ve Ses İçerik Kontrolü
-    Val-->>API: ✅ İçerik Geçerli (MP3 Magic Bytes OK)
-    API->>JobSvc: 3. Job Oluştur (status='PENDING', RAMStorage)
-    JobSvc->>DB: 4. DB'ye Kaydet (UUID)
-    API-->>User: 5. HTTP 202 Accepted (Job ID döner, arayüz donmaz)
-    
-    par Arka Plan İşlemi (Background Task / ThreadPool)
-        API->>JobSvc: 6. execute_job(job_id)
-        JobSvc->>DB: 7. status = 'PROCESSING'
-        JobSvc->>Pipe: 8. process_bytes(audio_bytes)
-        par Eşzamanlı (Paralel) Yapay Zeka Hesabı
-            Pipe->>Pipe: 9a. STT (Faster-Whisper) metni çıkarır
-            Pipe->>Pipe: 9b. Diarization (SpeechBrain ECAPA) konuşmacıları ayırır
+    Client->>API: 1. POST /api/v1/analyze (ses.wav, external_id='tenant_123')
+    API->>Rate: 2. Sliding Window Rate Limit Kontrolü
+    Rate-->>API: ✅ Limit Uygun (200 OK)
+    API->>DB: 3. external_id Kontrolü (Idempotency)
+    alt external_id Zaten Var
+        DB-->>API: Mevcut job_id Dön
+        API-->>Client: HTTP 200 OK (Mevcut job_id)
+    else Yeni İş Kaydı
+        API->>DB: Job Kaydet (status='PENDING')
+        API->>Queue: XADD audio_analysis_stream (job_id)
+        API-->>Client: HTTP 202 Accepted (Yeni job_id)
+    end
+
+    par Worker İşleme & Heartbeat
+        Worker->>Queue: 4. XREADGROUP (WORKER_PREFETCH=1)
+        Worker->>DB: 5. claim_job_atomically (Atomik Durum Geçişi -> PROCESSING)
+        loop İşlem Sürerken Heartbeat
+            Worker->>Queue: 6. XCLAIM (min_idle=0) ile kilit süresini tazele
         end
-        Pipe->>Fusion: 10. Kelimeler + Konuşmacı Aralıklarını Birleştir
-        Fusion->>Fusion: 11. SemanticRefiner ile Rol Geçişlerini Böl
-        Fusion-->>Pipe: 12. Zamana Göre Eşleşmiş Cümle Blokları
-        Pipe-->>JobSvc: 13. İşlenmiş Transkript Blokları & Overlap Metrikleri
-        JobSvc->>DB: 14. Utterances Kaydet & status = 'COMPLETED'
+        Worker->>Pipe: 7. STT + Diarization Paralel Analiz
+        Pipe-->>Worker: 8. İşlenmiş Transkript & Metrikler
+        Worker->>DB: 9. Transactional Outbox (Utterances + status='COMPLETED' + WebhookDelivery satırı yasa)
+        Worker->>Queue: 10. XACK (İş Başarıyla Bitti)
     end
 
-    loop Her 1 Saniyede Bir Polling (Max 2 Toast)
-        User->>API: 15. GET /api/v1/jobs/{job_id}
-        API-->>User: 16. status='COMPLETED' + Transkript Verileri
+    par Webhook Teslimatı (Bağımsız Worker)
+        Webhook->>DB: 11. get_due_webhook_deliveries (PENDING)
+        Webhook->>Client: 12. POST callback_url (HMAC-SHA256 İmzalı Payload)
+        Webhook->>DB: 13. update_webhook_delivery_status ('DELIVERED')
     end
-    User->>User: 17. Ekranda Dinamik Konuşmacı Kartları Gösterilir
 ```
 
 ---
 
 ## ⚙️ 5. YAPILAN VE EKLENEN TÜM YENİ ÖZELLİKLER (GÜNCEL SİSTEM DURUMU)
 
-Projede gerçekleştirilen kritik teknik geliştirmeler:
+Projede gerçekleştirilen kritik 6 aşamalı teknik geliştirmeler:
 
-1. **Async PostgreSQL & PgBouncer Veritabanı Mimarisi**:
-   - `asyncpg` sürücüsü ile PostgreSQL (`audio_db`, Port: 6432) altyapısına geçildi.
-   - Uygulama açılışında (`lifespan`) PostgreSQL bağlantısı doğrudan test edilir. PostgreSQL erişilemez durumdaysa ve `ALLOW_SQLITE_FALLBACK=false` ise uygulama **Loud-Fail (Kritik Hata)** ile durur. Yalnızca `ALLOW_SQLITE_FALLBACK=true` olduğunda güvenli SQLite tamponuna düşülerek *split-brain* riski önlenir.
+### ADIM 1 — Depolama ve Akış Altyapısı
+1. **Çoklu Depolama Desteği (`STORAGE_TYPE=disk|s3|memory`)**:
+   - Disk, AWS S3 ve In-Memory RAM depolama adaptörleri tamamlandı.
+   - `USE_REDIS_STREAM=true` iken bellek içi (memory) depolama kullanımı açılışta engellenerek süreçler arası veri izolasyon riski (`assert_storage_shared_across_processes`) ortadan kaldırıldı.
+2. **Lazy Path Çözümleme**: `execute_job` aşamasında dosyaların geçici yolları ihtiyaç anında çözümlenir.
 
-2. **Ölü Kodların Temizlenmesi (Zero Dead Code)**:
-   - Eski ve kullanılmayan Celery/RQ bağımlılıkları (`celery_app.py`, `tasks.py`, `local_storage_adapter.py`, `mock_stt_adapter.py`) projeden tamamen silindi.
-   - Arka plan işlemleri `stream_worker.py` ve FastAPI yerel asenkron görev yapısına entegre edildi.
+### ADIM 2 — Worker Doğruluğu ve Mükerrer İşlem Engelleme
+1. **Ayarlanabilir Prefetch (`WORKER_PREFETCH=1`)**: `XREADGROUP` count değeri 1 yapılarak CPU'da uzun süren işlerde mesajların başkası tarafından XAUTOCLAIM ile alınıp mükerrer işlenmesi engellendi.
+2. **Heartbeat & Atomik Claiming**: `claim_job_atomically` metodu ile veritabanında atomik `UPDATE ... WHERE status IN ('PENDING', stale)` kontrolü sağlandı. İş sürerken `XCLAIM min_idle=0` ile heartbeat atılır.
+3. **Idempotent İş Yürütme**: Durumu `COMPLETED` olan işler yeniden çalıştırılmaz.
 
-3. **0-Disk I/O RAM Depolama Akışı ve Async S3 İletişimi**:
-   - Yüklenen ses dosyaları disk üzerinde geçici dosya oluşturmadan doğrudan RAM bellekte 16kHz float32 NumPy dizisi olarak işlenir.
-   - S3 veya disk depolamaya yazma (`storage.save`) ve okuma (`storage.get_bytes`) işlemleri `asyncio.to_thread` ile thread pool'a alınarak 100MB+ büyük dosyalarda event loop kilitlenmesi engellendi.
+### ADIM 3 — Yeniden Deneme, DLQ ve Sweeper Servisi
+1. **Esnek Hata Sınıflandırması**: Kalıcı hatalarda (bozuk ses) direkt `FAILED`; geçici hatalarda (OOM, IO) üstel backoff ile `MAX_JOB_ATTEMPTS` (varsayılan 3) kadar yeniden deneme yapılır.
+2. **Dead-Letter Stream (`audio_analysis_dlq`)**: Deneme sınırı aşılan işler DLQ akışına aktarılır.
+3. **Sweeper Servisi (`python -m audio_analyzer.workers.sweeper`)**: Redis dağıtık kilidi (`sweeper_lock`) kullanarak askıda kalan PENDING veya kilitli PROCESSING kayıtlarını periyodik tarayıp akışa yeniden yayınlar.
 
-4. **%100 Token-Free SpeechBrain ECAPA-TDNN Konuşmacı Ayrıştırma**:
-   - PyAnnote token zorunluluğu kaldırılarak %100 açık kaynak SpeechBrain ECAPA-TDNN modeline geçildi.
-   - Konuşmacı ayırma hassasiyeti için `DIARIZATION_STEP_SEC=0.5` ve `DIARIZATION_THRESHOLD=0.42` olarak optimize edildi. Aynı cinsiyete sahip (iki kadın veya iki erkek) ses tonları milisaniyelik farklarla ayrıştırılır.
-   - Windows SYMLINK ve HuggingFace terminal uyarıları log seviyesinde tamamen temizlendi.
+### ADIM 4 — CPU Verimliliği ve Profil Yönetimi
+1. **Thread Bütçesi (`WORKER_CPU_THREADS`)**: Torch, OpenMP, MKL ve Faster-Whisper thread sayıları tek noktadan kontrol edilir (`(worker_sayisi × thread) <= core_sayisi`).
+2. **İşlem Profilleri (`PIPELINE_PROFILE=feedback|full`)**:
+   - `feedback` profili: Kısa seslerde (< `PIPELINE_MIN_DIARIZE_SEC`) veya tek konuşmacılı durumlarda Diarization'ı atlar, Denoise'u SNR düşükse çalıştırır, Whisper `beam_size=1` kullanır.
+   - `full` profili: Eksiksiz analiz sunar.
+3. **Tekil VAD Modu**: Çift VAD kullanımı kaldırılarak Faster-Whisper VAD filtresi ve Silero VAD arasında çakışmasız seçim sağlandı.
 
-5. **SemanticRefiner ve Alan Odaklı Rol Geçiş Ayrıştırması**:
-   - `_split_if_role_transition` fonksiyonu hem temsilci hem de müşteri ifadelerini (`"buyurun"`, `"merhaba ben..."`, `"şikayetim var..."`) algılayarak tek kartta birleşmiş cümleleri anlamsal olarak bölüp doğru konuşmacıya bağlar.
+### ADIM 5 — Giriş Kapısı, Idempotency ve Webhook Outbox
+1. **Redis Sliding Window Rate Limiter**: Bellek içi IP sözlüğü yerine Redis tabanlı sliding window algoritmasına geçildi (`RATE_LIMIT_PER_MINUTE=6000`, 429 + Retry-After). Redis arızasında fail-open çalışır.
+2. **Idempotent Entegrasyon (`external_id`)**: POST `/analyze` isteklerinde kiracı (tenant) bazlı benzersiz `external_id` kabul edilir. Aynı ID geldiğinde yeni iş açılmaz, mevcut `job_id` dönülür.
+3. **Transactional Webhook Outbox Pattern**: Webhook teslimatları analiz sonucuyla **aynı DB transaction'ında** `webhook_deliveries` tablosına yazılır. Ayrı bir `webhook_worker` servisi HMAC-SHA256 imzası ile asenkron teslim eder.
 
-6. **Web UI Toast Bildirim Yönetimi**:
-   - Arayüzde bildirimlerin ekranda üst üste yığılmasını önlemek için `showToast` fonksiyonu **en fazla 2 aktif bildirimle** sınırlandırıldı ve otomatik kapanma süresi 3 saniyeye çekildi.
-
-7. **HMAC-SHA256 İmzalı Asenkron Webhook Servisi**:
-   - Analiz tamamlandığında veya hata alındığında verilen `callback_url` adresine otomatik JSON bildirimi gönderilir. `X-Signature` başlığında HMAC-SHA256 imzası üretilir.
-
-8. **Sihirli Bayt (Magic Header) Güvenlik Doğrulaması**:
-   - `file_validator.py` ile dosyanın ilk ikili baytları (`RIFF`, `ID3`, `fLaC`, `OggS`, `ftyp`) kontrol edilir. Sahte veya bozuk dosyalar reddedilir.
-
-9. **100% Test Kapsamı ve PASS Oranı**:
-   - Projedeki 51 birim ve entegrasyon testinin tamamı (`pytest`) 0 hata ile yeşil geçmektedir (**51/51 PASSED**).
-
----
-
-## 🏎️ 6. RUST İLE DSP İVMELENDİRMESİ (NATIVE MODÜL)
-
-Projede `native/` klasörü altında C/Rust ile yazılmış bir **DSP (Digital Signal Processing - Dijital Sinyal İşleme)** modülü yer alır.
-- **Ne İşe Yarar?**:
-  - **Resampling**: Farklı örnekleme hızlarındaki sesleri 16kHz standart formata dönüştürür.
-  - **Energy VAD**: Ses kayıtlarındaki sessiz bölgeleri (silence) tespit eder.
-  - **Cosine Similarity**: İki ses biyometrik vektörü arasındaki benzerliği hesaplar.
-- **Neden Yapıldı?**: Saf Python döngüleri ile yapılan ses matematiksel işlemleri yavaştır. C/Rust ivmelendirmesi sayesinde bu matematiksel işlemler mikro-saniyeler seviyesine indirilmiştir.
+### ADIM 6 — Gözlemlenebilirlik, Temizlik ve Şema Yönetimi
+1. **Prometheus `/metrics` Endpoint'i**:
+   - Kuyruk derinliği (`audio_queue_depth`), bekleyen iş sayısı (`audio_pending_jobs_count`), en eski mesaj yaşı (`audio_oldest_message_age_seconds`), aşama süre histogramları (`audio_pipeline_stage_duration_seconds`), iş sayaçları, DLQ ve Webhook teslimat istatistikleri sunulur.
+2. **Alembic Single Source of Truth**:
+   - `audio_records` için compound indeks (`status`, `created_at`) ve `external_id` unique indeksi eklendi.
+   - Production veritabanı şeması yalnızca Alembic migration'ları ile yönetilir (`main.py`'deki `create_all` sadece SQLite içindir).
+3. **Veri Saklama Süresi Servisi (`RetentionService`)**:
+   - `AUDIO_RETENTION_HOURS` (varsayılan 24h) dolan ham sesleri depolamadan siler.
+   - `RESULT_RETENTION_DAYS` (varsayılan 30d) dolan eski veritabanı kayıtlarını temizleyen CLI scripti ([scripts/cleanup_retention.py](file:///c:/Users/ADIL%20CEVIK/Desktop/sesAnalizi/scripts/cleanup_retention.py)) eklendi.
+4. **Readiness Probe (`/health/ready`)**: DB, Redis ve AI Model yüklü durumunu kontrol ederek 200 OK / 503 Service Unavailable döner.
+5. **Rust Kodu İzolasyonu**: `native/` klasörü `experimental/native/` altına taşındı; varsayılan yolda yüksek hızlı NumPy/SciPy kullanılması kararlaştırıldı.
 
 ---
 
 ## ❓ 7. SUNUM VE JÜRİ İÇİN SORU - CEVAP (Q&A) REHBERİ
 
 **Soru 1: Bu projeyi 3 cümleyle nasıl özetlersin?**
-> *"Bu proje, çok konuşmacılı ses kayıtlarını yapay zeka ile metne dönüştüren ve kimin ne zaman konuştuğunu milisaniye hassasiyetinde tespit eden uçtan uca bir platformdur. Clean Architecture mimarisiyle yazılmış olup asenkron REST API, PostgreSQL veritabanı, 0-Disk RAM depolama akışı ve canlı düzenlenebilir modern web arayüzüne sahiptir."*
+> *"Bu proje, yüksek hacimli (~4000 mesaj) ses kayıtlarını CPU sunucularında sıfır iş kaybı ve mükerrer işleme olmadan işleyen, kurumsal düzeyde bir ses analiz platformudur. Clean Architecture, Redis Stream kuyruk mimarisi, Transactional Webhook Outbox ve Prometheus gözlemlenebilirlik altyapısına sahiptir."*
 
-**Soru 2: Neden PyAnnote yerine SpeechBrain ECAPA-TDNN tercih ettiniz?**
-> *"PyAnnote modeli HuggingFace tokeni ve kullanıcı onayları gerektirmekteydi. SpeechBrain ECAPA-TDNN modeli ise %100 açık kaynak, token-free ve çevrimdışı (offline) çalışabilir durumdadır. Ayrıca 192-boyutlu derin ses parmak izi çıkararak iki kadın konuşmacı arasındaki ton farklarını çok yüksek doğrulukla ayırabilmektedir."*
+**Soru 2: Mükerrer işlemeyi ve iş kaybını nasıl engelliyorsunuz?**
+> *"İki seviyeli koruma kullanıyoruz: Girişte `external_id` ile idempotency sağlıyoruz. Worker tarafında ise atomik veritabanı durum geçişi (`claim_job_atomically`), iş sürerken XCLAIM heartbeat yenilemesi ve sonuç kaydıyla aynı transaction'da çalışan Webhook Outbox tablosu kullanarak mükerrer işleme ve veri kaybını %100 engelliyoruz."*
 
-**Soru 3: Ses analiz süresi ne kadardır?**
-> *"Faster-Whisper (Medium/Small) ve SpeechBrain modelleri paralel eşzamanlı (ThreadPoolExecutor) çalıştığı için Real Time Factor (RTF) oranımız 0.10 - 0.20 arasındadır. 1 dakikalık ses kaydı yaklaşık 5-8 saniyede analiz edilmektedir."*
+**Soru 3: Veritabanı şema yönetimi nasıl yapılıyor?**
+> *"Üretim ortamlarında tek şema kaynağımız Alembic'tir. `alembic upgrade head` komutuyla migrasyonlar yürütülür. `main.py` içerisindeki `create_all` yalnızca yerel SQLite dev/test modunda çalışır."*
 
-**Soru 4: Veritabanı mimariniz nasıldır?**
-> *"Sistemimiz `asyncpg` ve SQLAlchemy ORM ile async PostgreSQL (`audio_db`) üzerinde çalışır. Clean Architecture ve Repository Pattern sayesinde veri tabanı katmanı tamamen soyutlanmıştır."*
+**Soru 4: Test durumunuz nedir?**
+> *"Projedeki 69 birim, entegrasyon ve bençmark testinin tamamı (`pytest`) %100 başarıyla geçmektedir (**69/69 PASSED**)."*
 
 ---
 
@@ -229,6 +243,25 @@ Projede `native/` klasörü altında C/Rust ile yazılmış bir **DSP (Digital S
   ```powershell
   .\.venv\Scripts\activate
   python -m audio_analyzer.api.main
+  ```
+- **Arka Plan Servislerini Başlatma**:
+  ```powershell
+  # Stream Worker (Analiz İşçisi)
+  python -m audio_analyzer.workers.stream_worker
+
+  # Sweeper Daemon (Askıda Kalan İşleri Kurtarma)
+  python -m audio_analyzer.workers.sweeper
+
+  # Webhook Worker (Outbox Bildirim Teslimatı)
+  python -m audio_analyzer.workers.webhook_worker
+  ```
+- **Veri Saklama Süresi Temizliği (CLI)**:
+  ```powershell
+  python scripts/cleanup_retention.py --audio-hours 24 --result-days 30
+  ```
+- **Alembic Veritabanı Migrasyonu**:
+  ```powershell
+  alembic upgrade head
   ```
 - **Tüm Test Otomasyonunu Çalıştırma**:
   ```powershell
