@@ -5,7 +5,17 @@ from alembic import context
 # 1. ORM Modellerinin Import Edilmesi (Single Source of Truth)
 from audio_analyzer.adapters.repository.models import Base
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 config = context.config
+
+db_url = os.getenv("DATABASE_URL")
+if db_url:
+    sync_db_url = db_url.replace("postgresql+asyncpg://", "postgresql://").replace("sqlite+aiosqlite://", "sqlite://")
+    config.set_main_option("sqlalchemy.url", sync_db_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
