@@ -162,16 +162,16 @@ sequenceDiagram
 Projede gerçekleştirilen kritik teknik geliştirmeler:
 
 1. **Async PostgreSQL & PgBouncer Veritabanı Mimarisi**:
-   - SQLite kilitlenmelerini engellemek için `asyncpg` sürücüsü ile PostgreSQL (`audio_db`, Port: 6432) altyapısına geçildi.
-   - Modül yükleme anındaki `asyncio.run()` bağımlılığı kaldırılarak Pytest ve FastAPI asenkron event loop çakışmaları tamamen çözüldü.
+   - `asyncpg` sürücüsü ile PostgreSQL (`audio_db`, Port: 6432) altyapısına geçildi.
+   - Uygulama açılışında (`lifespan`) PostgreSQL bağlantısı doğrudan test edilir. PostgreSQL erişilemez durumdaysa ve `ALLOW_SQLITE_FALLBACK=false` ise uygulama **Loud-Fail (Kritik Hata)** ile durur. Yalnızca `ALLOW_SQLITE_FALLBACK=true` olduğunda güvenli SQLite tamponuna düşülerek *split-brain* riski önlenir.
 
 2. **Ölü Kodların Temizlenmesi (Zero Dead Code)**:
    - Eski ve kullanılmayan Celery/RQ bağımlılıkları (`celery_app.py`, `tasks.py`, `local_storage_adapter.py`, `mock_stt_adapter.py`) projeden tamamen silindi.
    - Arka plan işlemleri `stream_worker.py` ve FastAPI yerel asenkron görev yapısına entegre edildi.
 
-3. **0-Disk I/O RAM Depolama Akışı (RAMStorageAdapter)**:
+3. **0-Disk I/O RAM Depolama Akışı ve Async S3 İletişimi**:
    - Yüklenen ses dosyaları disk üzerinde geçici dosya oluşturmadan doğrudan RAM bellekte 16kHz float32 NumPy dizisi olarak işlenir.
-   - Arayüzden dinleme yapılabilmesi için `GET /api/v1/jobs/{id}/audio` endpoint'i RAM bellekteki baytları canlı `Response(content=audio_bytes)` olarak sunar.
+   - S3 veya disk depolamaya yazma (`storage.save`) ve okuma (`storage.get_bytes`) işlemleri `asyncio.to_thread` ile thread pool'a alınarak 100MB+ büyük dosyalarda event loop kilitlenmesi engellendi.
 
 4. **%100 Token-Free SpeechBrain ECAPA-TDNN Konuşmacı Ayrıştırma**:
    - PyAnnote token zorunluluğu kaldırılarak %100 açık kaynak SpeechBrain ECAPA-TDNN modeline geçildi.
