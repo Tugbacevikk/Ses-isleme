@@ -778,12 +778,37 @@
                 cards[cardIndex].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
 
-            player.currentTime = startTime;
-            player.play();
-
             currentClipEndTime = endTime;
             if (statusElem) {
                 statusElem.textContent = `▶️ Oynatılıyor: ${formatTime(startTime)} - ${formatTime(endTime)}`;
+            }
+
+            const startPlaybackAtTime = () => {
+                try {
+                    player.currentTime = startTime;
+                } catch (e) {
+                    console.warn('currentTime ayarlanırken uyarı:', e);
+                }
+                const playPromise = player.play();
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        // Playback başladığında tam zaman damgasına sıçramayı garanti et
+                        player.currentTime = startTime;
+                    }).catch(err => {
+                        console.warn('Ses oynatma uyarısı:', err);
+                    });
+                }
+            };
+
+            if (player.readyState >= 1) {
+                startPlaybackAtTime();
+            } else {
+                const onMeta = () => {
+                    player.removeEventListener('loadedmetadata', onMeta);
+                    startPlaybackAtTime();
+                };
+                player.addEventListener('loadedmetadata', onMeta);
+                player.load();
             }
 
             player.ontimeupdate = function() {
@@ -806,6 +831,7 @@
             const player = document.getElementById('mainAudioPlayer');
             if (player) {
                 player.src = `/api/v1/jobs/${job.job_id}/audio`;
+                player.load();
             }
 
             utteranceList.innerHTML = '';
