@@ -1,9 +1,14 @@
+import concurrent.futures
+import io
 import logging
 import os
+from math import gcd
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 import numpy as np
+import scipy.signal
+import soundfile as sf
 
 from audio_analyzer.domain.interfaces import IAudioDenoiser, IAudioProcessor, IDiarizer, ISTTEngine, IVADProcessor
 from audio_analyzer.domain.models import OverlapSummary, TranscriptUtterance
@@ -91,8 +96,6 @@ class AudioAnalysisPipeline:
             if self.denoiser:
                 if profile == "feedback":
                     try:
-                        import soundfile as sf
-
                         audio_data, sr = sf.read(audio_path)
                         if audio_data.ndim > 1:
                             audio_data = audio_data.mean(axis=1)
@@ -151,8 +154,6 @@ class AudioAnalysisPipeline:
                 else:
                     diarization_segments = self.diarizer.diarize(working_path)
             else:
-                import concurrent.futures
-
                 with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                     future_stt = executor.submit(self.stt_engine.transcribe, working_path)
                     future_diar = executor.submit(self.diarizer.diarize, working_path)
@@ -199,7 +200,6 @@ class AudioAnalysisPipeline:
         """
         0-Disk I/O: Ses dosyasını doğrudan RAM bellek üzerinden işler.
         """
-        import io
         profile = os.getenv("PIPELINE_PROFILE", "full").lower()
         min_diarize_sec = float(os.getenv("PIPELINE_MIN_DIARIZE_SEC", "10.0"))
         min_snr_db = float(os.getenv("PIPELINE_MIN_SNR_DB", "15.0"))
@@ -212,10 +212,6 @@ class AudioAnalysisPipeline:
                 file_bytes, target_sample_rate=16000
             )
         else:
-            import soundfile as sf
-            import scipy.signal
-            from math import gcd
-
             audio_array, sr = sf.read(io.BytesIO(file_bytes))
             if audio_array.ndim > 1:
                 audio_array = np.mean(audio_array, axis=1)
@@ -263,8 +259,6 @@ class AudioAnalysisPipeline:
             else:
                 diarization_segments = self.diarizer.diarize(audio_array)
         else:
-            import concurrent.futures
-
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 future_stt = executor.submit(self.stt_engine.transcribe, audio_array)
                 future_diar = executor.submit(self.diarizer.diarize, audio_array)

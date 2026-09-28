@@ -1,16 +1,17 @@
+import asyncio
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, inspect, select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from audio_analyzer.adapters.repository.models import AudioRecordModel, TranscriptUtteranceModel
+from audio_analyzer.adapters.repository.models import AudioRecordModel, TranscriptUtteranceModel, WebhookDeliveryModel
 from audio_analyzer.domain.interfaces import ITranscriptRepository
 from audio_analyzer.domain.models import AudioRecord, JobStatus, TranscriptUtterance
 
-import time
-from sqlalchemy.exc import OperationalError
 
 class PostgresRepository(ITranscriptRepository):
     """
@@ -89,9 +90,6 @@ class PostgresRepository(ITranscriptRepository):
         return self._to_domain(orm_model)
 
     async def create_webhook_delivery(self, job_id: uuid.UUID, url: str, payload: str) -> uuid.UUID:
-        from audio_analyzer.adapters.repository.models import WebhookDeliveryModel
-        from datetime import datetime, timezone
-
         now = datetime.now(timezone.utc)
         delivery_id = uuid.uuid4()
         orm_model = WebhookDeliveryModel(
@@ -110,9 +108,6 @@ class PostgresRepository(ITranscriptRepository):
         return delivery_id
 
     async def get_due_webhook_deliveries(self, limit: int = 50) -> List[dict]:
-        from audio_analyzer.adapters.repository.models import WebhookDeliveryModel
-        from datetime import datetime, timezone
-
         now = datetime.now(timezone.utc)
         stmt = (
             select(WebhookDeliveryModel)
@@ -142,9 +137,6 @@ class PostgresRepository(ITranscriptRepository):
     async def update_webhook_delivery_status(
         self, delivery_id: uuid.UUID, status: str, attempts: int, next_attempt_at: Optional[object] = None, error_message: Optional[str] = None
     ) -> bool:
-        from audio_analyzer.adapters.repository.models import WebhookDeliveryModel
-        from datetime import datetime, timezone
-
         stmt = select(WebhookDeliveryModel).where(WebhookDeliveryModel.id == delivery_id)
         res = await self.session.execute(stmt)
         orm_model = res.scalar_one_or_none()
@@ -166,9 +158,6 @@ class PostgresRepository(ITranscriptRepository):
     async def claim_job_atomically(
         self, record_id: uuid.UUID, stale_seconds: int = 1800
     ) -> Tuple[bool, Optional[AudioRecord], bool]:
-        from datetime import datetime, timedelta, timezone
-        from sqlalchemy import update
-
         record = await self.get_record_by_id(record_id)
         if not record:
             return False, None, False
@@ -358,8 +347,6 @@ class PostgresRepository(ITranscriptRepository):
         Aksi takdirde durumu PENDING yapar (is_final=False) ve yeniden denenmeye izin verir.
         Döner: (yeni_attempts, is_final_failed)
         """
-        from datetime import datetime, timezone
-
         stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
         res = await self.session.execute(stmt)
         orm_model = res.scalar_one_or_none()
@@ -386,8 +373,6 @@ class PostgresRepository(ITranscriptRepository):
         """
         'stale_seconds' süresidir PENDING durumunda bekleyen kayıtları getirir.
         """
-        from datetime import datetime, timedelta, timezone
-
         threshold = datetime.now(timezone.utc) - timedelta(seconds=stale_seconds)
         stmt = (
             select(AudioRecordModel)
@@ -406,8 +391,6 @@ class PostgresRepository(ITranscriptRepository):
         """
         'stale_seconds' süresidir PROCESSING durumunda kalmış (çökmüş/askıda) kayıtları getirir.
         """
-        from datetime import datetime, timedelta, timezone
-
         threshold = datetime.now(timezone.utc) - timedelta(seconds=stale_seconds)
         stmt = (
             select(AudioRecordModel)
@@ -426,8 +409,6 @@ class PostgresRepository(ITranscriptRepository):
         """
         Kayıt durumunu tekrar PENDING yapar (Sweeper yeniden kuyruğa almak için kullanır).
         """
-        from datetime import datetime, timezone
-
         stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
         res = await self.session.execute(stmt)
         orm_model = res.scalar_one_or_none()
@@ -440,9 +421,6 @@ class PostgresRepository(ITranscriptRepository):
         return True
 
     def _to_domain(self, orm: AudioRecordModel) -> AudioRecord:
-        from datetime import datetime
-        from sqlalchemy import inspect
-
         state = inspect(orm)
         if state is not None and "utterances" in state.unloaded:
             utterances_list = []

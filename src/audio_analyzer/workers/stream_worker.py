@@ -1,7 +1,9 @@
 import asyncio
+import contextlib
 import logging
 import os
 import signal
+import time
 import uuid
 from typing import Optional
 
@@ -10,12 +12,9 @@ from audio_analyzer.adapters.repository.unit_of_work import SqlAlchemyUnitOfWork
 from audio_analyzer.adapters.storage.storage_factory import get_storage_adapter
 from audio_analyzer.api.dependencies import AsyncSessionLocal
 from audio_analyzer.services.job_service import JobService
+from audio_analyzer.services.pipeline_factory import get_shared_pipeline
 
 logger = logging.getLogger(__name__)
-
-
-import contextlib
-import time
 
 
 class RedisStreamWorker:
@@ -57,8 +56,6 @@ class RedisStreamWorker:
             storage = get_storage_adapter()
 
             async with uow:
-                from audio_analyzer.services.pipeline_factory import get_shared_pipeline
-
                 pipeline = get_shared_pipeline()
                 job_service = JobService(storage=storage, repository=uow.repository, pipeline=pipeline)
                 res_status, attempts, err_msg = await job_service.execute_job_detailed(record_id)
