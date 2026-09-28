@@ -100,4 +100,39 @@ Sistem, **Dialect-Agnostic SQLAlchemy ORM** ve **Alembic** entegrasyonu ile veri
   alembic revision --autogenerate -m "Şema güncelleme açıklaması"
   ```
 
+---
+
+## ⚡ CPU Verimliliği & Kapasite Planlaması
+
+### 1. CPU Thread Bütçesi Kuralları
+Sistemde CPU aşırı kullanımı (oversubscription) engellemek için thread bütçesi `WORKER_CPU_THREADS` ortam değişkeni ile yönetilir:
+
+```bash
+# Örnek: 8 Çekirdekli bir sunucuda 2 Worker çalıştırma
+export WORKER_CPU_THREADS=4
+```
+
+**Kural:** `(worker_süreç_sayısı × WORKER_CPU_THREADS) <= toplam_çekirdek_sayısı`
+
+### 2. Pipeline Profilleri (`PIPELINE_PROFILE`)
+- **`feedback` Profil:** Kısa ve yüksek hacimli geri bildirim mesajları için optimize edilmiştir.
+  - Diarization: Ses < `PIPELINE_MIN_DIARIZE_SEC` (varsayılan 10s) ise atlanır (`SPEAKER_00`).
+  - Denoiser: Yalnızca ölçülen SNR < `PIPELINE_MIN_SNR_DB` (varsayılan 15 dB) ise çalışır.
+  - SemanticRefiner: Yalnızca `DOMAIN_MODE` tanımlıysa çalışır.
+  - Whisper Beam Size: 1.
+- **`full` Profil (Varsayılan):** Tüm analiz adımlarını eksiksiz çalıştırır. Whisper Beam Size: 5.
+
+### 3. Çevrimdışı Kapasite Hesaplama Formülü
+Kapasite planlaması yapılırken aşağıdaki matematiksel formül esas alınır:
+
+$$\text{Gereken Çekirdek Sayısı} = \frac{\text{Toplam Ses Süresi (sn)} \times k}{\text{Hedef Tamamlanma Süresi (sn)}}$$
+
+> **Not:** $k$ katsayısı (ses saniyesi başına harcanan çekirdek-saniye), `scripts/benchmark_cpu.py` betiği çalıştırılarak donanım üzerinde ampirik olarak ölçülmelidir (tahmin yazılmaz).
+
+### 4. CPU Performans Benchmark Betiği
+```bash
+python scripts/benchmark_cpu.py --audio-dir ./storage --models tiny,small --profiles feedback,full --threads 4
+```
+
+
 

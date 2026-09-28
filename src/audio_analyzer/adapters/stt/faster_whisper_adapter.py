@@ -6,6 +6,12 @@ from audio_analyzer.domain.models import DeviceConfig, WordSegment
 
 import os
 
+import logging
+from audio_analyzer.utils.cpu_budget import setup_cpu_thread_budget
+
+logger = logging.getLogger(__name__)
+
+
 class FasterWhisperAdapter(ISTTEngine):
     """
     Faster-Whisper (CTranslate2) Speech-to-Text Motor Adaptörü.
@@ -20,18 +26,17 @@ class FasterWhisperAdapter(ISTTEngine):
     ):
         self.model_size = model_size
         self.device_config = device_config or DeviceConfig()
-        # Uzun prompt'ların neden olduğu yönlendirme (bias) ve halüsinatif kelime uydurmayı önlemek için varsayılan None
         self.initial_prompt = initial_prompt
         self._model = None
+        self._batched_model = None
 
     def _lazy_load_model(self):
-        """Modeli ihtiyaç anında (lazy loading) RAM/VRAM'e yükler."""
+        """Modeli ve BatchedInferencePipeline'ı ihtiyaç anında (lazy loading) bir kez yükler."""
         if self._model is None:
             try:
                 from faster_whisper import WhisperModel
 
-                default_threads = min(8, os.cpu_count() or 4)
-                cpu_threads = int(os.getenv("WHISPER_CPU_THREADS", str(default_threads)))
+                cpu_threads = setup_cpu_thread_budget()
                 self._model = WhisperModel(
                     self.model_size,
                     device=self.device_config.device,
@@ -39,6 +44,16 @@ class FasterWhisperAdapter(ISTTEngine):
                     device_index=self.device_config.device_index,
                     cpu_threads=cpu_threads,
                 )
+
+                try:
+                    from faster_whisper import BatchedInferencePipeline
+
+                    self._batched_model = BatchedInferencePipeline(model=self._model)
+                    logger.info("FasterWhisper BatchedInferencePipeline tek seferlik oluşturuldu.")
+                except Exception as b_err:
+                    logger.info("BatchedInferencePipeline oluşturulamadı (%s), standart modele düşülüyor.", b_err)
+                    self._batched_model = None
+
             except ImportError:
                 raise ImportError(
                     "faster-whisper kütüphanesi yüklü değil. 'pip install faster-whisper' çalıştırın."
@@ -46,18 +61,21 @@ class FasterWhisperAdapter(ISTTEngine):
 
     def transcribe(self, audio_path: str) -> Tuple[List[WordSegment], Optional[str]]:
         self._lazy_load_model()
-        beam_size = int(os.getenv("WHISPER_BEAM_SIZE", "2"))
+        language = os.getenv("WHISPER_LANGUAGE", "tr")
+        profile = os.getenv("PIPELINE_PROFILE", "full").lower()
+        default_beam = "1" if profile == "feedback" else "5"
+        beam_size = int(os.getenv("WHISPER_BEAM_SIZE", default_beam))
         batch_size = int(os.getenv("WHISPER_BATCH_SIZE", "16"))
         vad_params = dict(min_silence_duration_ms=1000, speech_pad_ms=400)
 
-        try:
-            from faster_whisper import BatchedInferencePipeline
-            batched_model = BatchedInferencePipeline(model=self._model)
-            segments, info = batched_model.transcribe(
+        prompt_str = self.initial_prompt or ("Türkçe konuşma kaydı." if language == "tr" else None)
+
+        if self._batched_model is not None:
+            segments, info = self._batched_model.transcribe(
                 audio_path,
                 batch_size=batch_size,
-                language="tr",
-                initial_prompt=self.initial_prompt or "Türkçe konuşma kaydı.",
+                language=language,
+                initial_prompt=prompt_str,
                 word_timestamps=True,
                 beam_size=beam_size,
                 condition_on_previous_text=False,
@@ -70,11 +88,11 @@ class FasterWhisperAdapter(ISTTEngine):
                 vad_filter=True,
                 vad_parameters=vad_params,
             )
-        except Exception as e:
+        else:
             segments, info = self._model.transcribe(
                 audio_path,
-                language="tr",
-                initial_prompt=self.initial_prompt or "Türkçe konuşma kaydı.",
+                language=language,
+                initial_prompt=prompt_str,
                 word_timestamps=True,
                 beam_size=beam_size,
                 condition_on_previous_text=False,
@@ -84,7 +102,8 @@ class FasterWhisperAdapter(ISTTEngine):
                 no_speech_threshold=0.8,
                 compression_ratio_threshold=2.4,
                 log_prob_threshold=None,
-                vad_filter=False,
+                vad_filter=True,
+                vad_parameters=vad_params,
             )
 
         words: List[WordSegment] = []
