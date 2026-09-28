@@ -35,6 +35,9 @@ class AudioRecordModel(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     callback_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     webhook_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, server_default=func.now()
     )

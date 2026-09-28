@@ -188,9 +188,11 @@ async def upload_and_analyze_audio(
             )
             logger.info("Görüşme görevi %s başarıyla Redis Stream (XADD) akışına fırlatıldı.", job_id)
         except Exception as e:
-            logger.warning("Redis Stream fırlatma uyarısı (%s), yerel BackgroundTasks'e düşülüyor", e)
-            background_tasks.add_task(
-                run_pipeline_background, str(job_id), file.filename, file_bytes
+            logger.error("Redis Stream (XADD) yayını başarısız oldu (%s). Kayıt PENDING kaldı, Sweeper toparlayacak.", e)
+            raise HTTPException(
+                status_code=503,
+                detail="Mesaj kuyruğu servisi geçici olarak yanıt vermiyor. İsteğiniz PENDING olarak kaydedildi.",
+                headers={"Retry-After": "5"},
             )
     else:
         background_tasks.add_task(run_pipeline_background, str(job_id), file.filename, file_bytes)

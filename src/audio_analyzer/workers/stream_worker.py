@@ -43,7 +43,7 @@ class RedisStreamWorker:
             pass
 
     async def process_single_message(self, msg_id: str, fields: dict) -> bool:
-        """Tek bir Redis Stream mesajını çözer, JobService ile yürütür ve XACK onaylar."""
+        """Tek bir Redis Stream mesajını çözer, JobService ile yürütür ve karara göre ACK / RETRY / DLQ yönetir."""
         job_id_str = fields.get("job_id")
         if not job_id_str:
             logger.warning("Eksik job_id içeren mesaj es geçiliyor: %s", msg_id)
@@ -61,19 +61,57 @@ class RedisStreamWorker:
 
                 pipeline = get_shared_pipeline()
                 job_service = JobService(storage=storage, repository=uow.repository, pipeline=pipeline)
-                success = await job_service.execute_job(record_id)
+                res_status, attempts, err_msg = await job_service.execute_job_detailed(record_id)
 
-            await self.adapter.ack_message(msg_id)
-            logger.info(
-                "Worker %s job_id=%s mesajını başardı ve XACK onayladı (msg_id=%s).",
-                self.consumer_name,
-                job_id_str,
-                msg_id,
-            )
-            return success
+            if res_status in ("COMPLETED", "SKIPPED"):
+                await self.adapter.ack_message(msg_id)
+                logger.info(
+                    "Worker %s job_id=%s mesajını başardı (%s) ve XACK onayladı.",
+                    self.consumer_name,
+                    job_id_str,
+                    res_status,
+                )
+                return True
+            elif res_status == "FAILED":
+                # Kalıcı hata veya Maksimum deneme aşıldı -> Dead-Letter Stream'e aktar ve XACK et
+                await self.adapter.publish_to_dlq(
+                    job_id=job_id_str,
+                    error_message=err_msg or "Unkown Failure",
+                    attempts=attempts,
+                )
+                await self.adapter.ack_message(msg_id)
+                logger.warning(
+                    "Worker %s job_id=%s (attempts=%d) FAILED durumunda DLQ'ya atıldı ve XACK onaylandı.",
+                    self.consumer_name,
+                    job_id_str,
+                    attempts,
+                )
+                return False
+            elif res_status == "RETRY":
+                # Geçici hata -> Üstel backoff sonrası yeniden akışa yayınla ve eski mesajı XACK et
+                backoff_sec = min(30.0, float(2 ** max(0, attempts - 1)))
+                logger.info(
+                    "Worker %s job_id=%s (attempts=%d) geçici hata aldı. %.1f sn backoff sonrası yeniden akışa yayınlanıyor.",
+                    self.consumer_name,
+                    job_id_str,
+                    attempts,
+                    backoff_sec,
+                )
+                await asyncio.sleep(backoff_sec)
+                await self.adapter.publish_job(
+                    job_id=job_id_str,
+                    file_name=fields.get("file_name", ""),
+                    callback_url=fields.get("callback_url", None),
+                )
+                await self.adapter.ack_message(msg_id)
+                return False
+            else:
+                await self.adapter.ack_message(msg_id)
+                return False
+
         except Exception as ex:
             logger.error(
-                "Worker %s msg_id=%s işlerken hata aldı: %s",
+                "Worker %s msg_id=%s beklenmeyen hata aldı: %s",
                 self.consumer_name,
                 msg_id,
                 ex,

@@ -193,3 +193,35 @@ class RedisStreamAdapter:
         except Exception as e:
             logger.warning("xclaim heartbeat note for msg_id=%s: %s", message_id, e)
             return False
+
+    async def publish_to_dlq(
+        self,
+        job_id: str,
+        error_message: str,
+        attempts: int = 1,
+        dlq_key: str = "audio_analysis_dlq",
+    ) -> str:
+        """
+        Maksimum deneme sayısı aşılan veya kalıcı hata alan işleri Dead-Letter Stream (DLQ) akışına yazar (`XADD audio_analysis_dlq`).
+        """
+        client = self.get_client()
+        payload = {
+            "job_id": str(job_id),
+            "error_message": str(error_message),
+            "attempts": str(attempts),
+        }
+        msg_id = await client.xadd(
+            name=dlq_key,
+            fields=payload,
+            maxlen=100000,
+            approximate=True,
+        )
+        logger.warning(
+            "Job %s (attempts=%d) Dead-Letter Stream (%s, msg_id=%s) akışına aktarıldı. Hata: %s",
+            job_id,
+            attempts,
+            dlq_key,
+            msg_id,
+            error_message,
+        )
+        return str(msg_id)

@@ -53,6 +53,9 @@ class PostgresRepository(ITranscriptRepository):
             error_message=record.error_message,
             callback_url=record.callback_url,
             webhook_status=record.webhook_status,
+            attempts=record.attempts,
+            processing_started_at=record.processing_started_at,
+            last_error_at=record.last_error_at,
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
@@ -100,6 +103,7 @@ class PostgresRepository(ITranscriptRepository):
             )
             .values(
                 status=JobStatus.PROCESSING.value,
+                processing_started_at=now,
                 updated_at=now,
             )
         )
@@ -253,6 +257,100 @@ class PostgresRepository(ITranscriptRepository):
         await self._commit_or_flush()
         return True
 
+    async def handle_job_failure(
+        self,
+        record_id: uuid.UUID,
+        error_message: str,
+        is_transient: bool = True,
+        max_attempts: int = 3,
+    ) -> Tuple[int, bool]:
+        """
+        İş hatasını kaydeder ve deneme sayısını (attempts) artırır.
+        Hata kalıcı ise veya maks deneme sayısı aşıldıysa durumu FAILED yapar (is_final=True).
+        Aksi takdirde durumu PENDING yapar (is_final=False) ve yeniden denenmeye izin verir.
+        Döner: (yeni_attempts, is_final_failed)
+        """
+        from datetime import datetime, timezone
+
+        stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
+        res = await self.session.execute(stmt)
+        orm_model = res.scalar_one_or_none()
+        if not orm_model:
+            return 0, True
+
+        now = datetime.now(timezone.utc)
+        orm_model.attempts = (orm_model.attempts or 0) + 1
+        orm_model.last_error_at = now
+        orm_model.error_message = error_message
+        orm_model.updated_at = now
+
+        is_final = (not is_transient) or (orm_model.attempts >= max_attempts)
+
+        if is_final:
+            orm_model.status = JobStatus.FAILED.value
+        else:
+            orm_model.status = JobStatus.PENDING.value
+
+        await self._commit_or_flush()
+        return orm_model.attempts, is_final
+
+    async def get_stale_pending_records(self, stale_seconds: int = 300, limit: int = 50) -> List[AudioRecord]:
+        """
+        'stale_seconds' süresidir PENDING durumunda bekleyen kayıtları getirir.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        threshold = datetime.now(timezone.utc) - timedelta(seconds=stale_seconds)
+        stmt = (
+            select(AudioRecordModel)
+            .where(
+                AudioRecordModel.status == JobStatus.PENDING.value,
+                AudioRecordModel.created_at < threshold,
+            )
+            .order_by(AudioRecordModel.created_at.asc())
+            .limit(limit)
+        )
+        res = await self.session.execute(stmt)
+        orm_records = res.scalars().all()
+        return [self._to_domain(r) for r in orm_records]
+
+    async def get_stale_processing_records(self, stale_seconds: int = 1800, limit: int = 50) -> List[AudioRecord]:
+        """
+        'stale_seconds' süresidir PROCESSING durumunda kalmış (çökmüş/askıda) kayıtları getirir.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        threshold = datetime.now(timezone.utc) - timedelta(seconds=stale_seconds)
+        stmt = (
+            select(AudioRecordModel)
+            .where(
+                AudioRecordModel.status == JobStatus.PROCESSING.value,
+                AudioRecordModel.updated_at < threshold,
+            )
+            .order_by(AudioRecordModel.updated_at.asc())
+            .limit(limit)
+        )
+        res = await self.session.execute(stmt)
+        orm_records = res.scalars().all()
+        return [self._to_domain(r) for r in orm_records]
+
+    async def reset_record_to_pending(self, record_id: uuid.UUID) -> bool:
+        """
+        Kayıt durumunu tekrar PENDING yapar (Sweeper yeniden kuyruğa almak için kullanır).
+        """
+        from datetime import datetime, timezone
+
+        stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
+        res = await self.session.execute(stmt)
+        orm_model = res.scalar_one_or_none()
+        if not orm_model:
+            return False
+
+        orm_model.status = JobStatus.PENDING.value
+        orm_model.updated_at = datetime.now(timezone.utc)
+        await self._commit_or_flush()
+        return True
+
     def _to_domain(self, orm: AudioRecordModel) -> AudioRecord:
         from datetime import datetime
         from sqlalchemy import inspect
@@ -290,6 +388,9 @@ class PostgresRepository(ITranscriptRepository):
             error_message=orm.error_message,
             callback_url=getattr(orm, "callback_url", None),
             webhook_status=getattr(orm, "webhook_status", None),
+            attempts=getattr(orm, "attempts", 0) or 0,
+            processing_started_at=getattr(orm, "processing_started_at", None),
+            last_error_at=getattr(orm, "last_error_at", None),
             created_at=orm.created_at,
             updated_at=orm.updated_at,
             utterances=domain_utterances,

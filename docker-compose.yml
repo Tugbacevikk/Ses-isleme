@@ -50,6 +50,44 @@ services:
       redis:
         condition: service_started
 
+  # 2b. Sweeper Servisi (Yetim ve Askıda Kalan İşleri Toparlayıcı)
+  sweeper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: audio_analyzer_sweeper:latest
+    container_name: audio_analyzer_sweeper
+    restart: always
+    command: python -m audio_analyzer.workers.sweeper
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/audio_db
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_TYPE=disk
+      - STORAGE_DIR=/app/storage/raw
+      - PENDING_STALE_SEC=300
+      - PROCESSING_STALE_SEC=1800
+      - MAX_JOB_ATTEMPTS=3
+    volumes:
+      - audio_storage:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # 2c. Tek Seferlik Veritabanı Migration Servisi
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: audio_analyzer_migrate
+    command: alembic upgrade head
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/audio_db
+    depends_on:
+      db:
+        condition: service_healthy
+
 
   # 3. PostgreSQL Veritabanı
   db:

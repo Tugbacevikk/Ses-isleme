@@ -22,9 +22,9 @@ async def test_execute_job_failure_does_not_leak_traceback(in_memory_db):
     storage = InMemoryStorageAdapter()
     repository = PostgresRepository(session=in_memory_db)
 
-    # Pipeline that raises an error
+    # Pipeline that raises a permanent error
     mock_pipeline = MagicMock()
-    mock_pipeline.process.side_effect = RuntimeError("Internal model failure in C:\\Secret\\Path\\model.py")
+    mock_pipeline.process.side_effect = ValueError("Internal model failure in C:\\Secret\\Path\\model.py")
 
     job_service = JobService(storage=storage, repository=repository, pipeline=mock_pipeline)
 
@@ -41,7 +41,7 @@ async def test_execute_job_failure_does_not_leak_traceback(in_memory_db):
     # Verify no raw traceback or local path is present in error_message
     assert "Traceback (most recent call last)" not in record.error_message
     assert "C:\\Secret\\Path" not in record.error_message
-    assert "RuntimeError" in record.error_message
+    assert "ValueError" in record.error_message
 
 
 async def test_execute_job_triggers_webhook_callback(in_memory_db, monkeypatch):

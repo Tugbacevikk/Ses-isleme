@@ -63,6 +63,32 @@ class ITranscriptRepository(ABC):
         pass
 
     @abstractmethod
+    async def handle_job_failure(
+        self,
+        record_id: uuid.UUID,
+        error_message: str,
+        is_transient: bool = True,
+        max_attempts: int = 3,
+    ) -> Tuple[int, bool]:
+        """İş hatasını kaydeder, attempts artırır ve durumu (FAILED veya PENDING) belirler."""
+        pass
+
+    @abstractmethod
+    async def get_stale_pending_records(self, stale_seconds: int = 300, limit: int = 50) -> List[AudioRecord]:
+        """PENDING durumunda bekleyen bayat kayıtları getirir."""
+        pass
+
+    @abstractmethod
+    async def get_stale_processing_records(self, stale_seconds: int = 1800, limit: int = 50) -> List[AudioRecord]:
+        """PROCESSING durumunda kalmış bayat kayıtları getirir."""
+        pass
+
+    @abstractmethod
+    async def reset_record_to_pending(self, record_id: uuid.UUID) -> bool:
+        """Kayıt durumunu tekrar PENDING yapar."""
+        pass
+
+    @abstractmethod
     async def save_utterances(
         self,
         record_id: uuid.UUID,

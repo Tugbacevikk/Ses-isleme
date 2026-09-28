@@ -115,6 +115,9 @@ class AudioRecord(BaseModel):
     error_message: Optional[str] = None
     callback_url: Optional[str] = None
     webhook_status: Optional[str] = None
+    attempts: int = 0
+    processing_started_at: Optional[datetime] = None
+    last_error_at: Optional[datetime] = None
     overlap_summary: Optional[OverlapSummary] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
