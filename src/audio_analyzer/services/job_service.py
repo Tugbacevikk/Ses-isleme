@@ -47,7 +47,7 @@ class JobService:
         Yeni bir analiz görevi oluşturur (status='PENDING').
         Ses dosyasını depolamaya kaydeder ve DB kaydını açar.
         """
-        storage_uri = self.storage.save(file_bytes, file_name)
+        storage_uri = await asyncio.to_thread(self.storage.save, file_bytes, file_name)
         record_id = uuid.uuid4()
 
         record = AudioRecord(
@@ -90,7 +90,7 @@ class JobService:
             if not file_bytes:
                 if hasattr(self.storage, "get_bytes"):
                     try:
-                        file_bytes = self.storage.get_bytes(record.storage_uri)
+                        file_bytes = await asyncio.to_thread(self.storage.get_bytes, record.storage_uri)
                     except Exception as ex:
                         logger.warning("Storage'dan RAM baytları okunamadı (%s): %s", record.storage_uri, ex)
 

@@ -71,16 +71,6 @@ def create_async_db_engine(db_url: str):
 
 def init_engine():
     db_url = os.getenv("DATABASE_URL", "sqlite:///storage/dev_database.db")
-    allow_fallback = os.getenv("ALLOW_SQLITE_FALLBACK", "false").lower() == "true"
-
-    if allow_fallback and not db_url.startswith("sqlite"):
-        fallback_url = "sqlite:///storage/dev_database.db"
-        logger.warning(
-            "ALLOW_SQLITE_FALLBACK=true olduğu için yerel SQLite (%s) tamponuna geçiliyor.",
-            fallback_url,
-        )
-        return create_async_db_engine(fallback_url)
-
     logger.info("Veritabanı motoru başlatılıyor: %s", get_async_db_url(db_url))
     return create_async_db_engine(db_url)
 

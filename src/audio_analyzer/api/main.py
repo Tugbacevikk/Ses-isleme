@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from audio_analyzer.adapters.repository.models import Base
-from audio_analyzer.api.dependencies import engine
+from audio_analyzer.api import dependencies
 from audio_analyzer.api.routers import jobs
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,8 +36,23 @@ async def lifespan(app: FastAPI):
     FastAPI Uygulama Yaşam Döngüsü (Lifespan).
     Sunucu başlatılırken veritabanı tablolarını asenkron olarak oluşturur ve AI modellerini önceden ısıtır (Warm-load).
     """
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with dependencies.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as db_err:
+        allow_fallback = os.getenv("ALLOW_SQLITE_FALLBACK", "false").lower() == "true"
+        if allow_fallback:
+            logger.warning(
+                "PostgreSQL bağlantısı kurulamadı (%s). ALLOW_SQLITE_FALLBACK=true olduğu için SQLite yedeğine geçiliyor.",
+                db_err,
+            )
+            dependencies.engine = dependencies.create_async_db_engine("sqlite:///storage/dev_database.db")
+            dependencies.AsyncSessionLocal.configure(bind=dependencies.engine)
+            async with dependencies.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+        else:
+            logger.critical("Veritabanı bağlantı hatası (ALLOW_SQLITE_FALLBACK=false): %s", db_err)
+            raise db_err
 
     try:
         from audio_analyzer.services.pipeline_factory import get_shared_pipeline
@@ -106,7 +121,7 @@ async def health_check():
     try:
         from sqlalchemy import text
 
-        async with engine.connect() as conn:
+        async with dependencies.engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception as e:
         logger.error("Health check database connection error: %s", e, exc_info=True)

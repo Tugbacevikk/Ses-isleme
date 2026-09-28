@@ -48,18 +48,23 @@ async def test_postgres_repository_crud_flow(in_memory_db):
 
 
 @pytest.mark.integration
-def test_init_engine_fallback_behavior(monkeypatch):
-    from audio_analyzer.api.dependencies import init_engine
+async def test_init_engine_fallback_behavior(monkeypatch):
+    from audio_analyzer.api.dependencies import init_engine, create_async_db_engine
+    from audio_analyzer.api.main import lifespan, app
+    from audio_analyzer.api import dependencies
 
-    # 1. ALLOW_SQLITE_FALLBACK=false iken PostgreSQL dialect engine dönmeli
-    monkeypatch.setenv("DATABASE_URL", "postgresql://invalid_user:invalid_pass@localhost:9999/non_existent_db")
-    monkeypatch.setenv("ALLOW_SQLITE_FALLBACK", "false")
+    invalid_url = "postgresql://invalid_user:invalid_pass@localhost:9999/non_existent_db"
+    monkeypatch.setenv("DATABASE_URL", invalid_url)
+
+    # 1. init_engine her zaman varsayılan olarak DATABASE_URL ile engine oluşturmalı
     pg_engine = init_engine()
     assert "postgresql" in str(pg_engine.url)
 
-    # 2. ALLOW_SQLITE_FALLBACK=true iken SQLite fallback yapılmalı
+    # 2. ALLOW_SQLITE_FALLBACK=true iken lifespan sırasında SQLite yedeğine düşülmeli
     monkeypatch.setenv("ALLOW_SQLITE_FALLBACK", "true")
-    fallback_engine = init_engine()
-    assert "sqlite" in str(fallback_engine.url)
+    dependencies.engine = create_async_db_engine(invalid_url)
+
+    async with lifespan(app):
+        assert "sqlite" in str(dependencies.engine.url)
 
 
