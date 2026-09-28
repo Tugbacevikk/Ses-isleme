@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
@@ -94,33 +94,7 @@ class UtteranceCreateRequest(BaseModel):
     text: str
 
 
-import threading
-import time
-from collections import defaultdict
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
-
-
-class SimpleRateLimiter:
-    """Thread-safe IP bazlı dakikalık istek sınırlayıcı (DoS / Rate Limit Koruması)."""
-
-    def __init__(self, default_rpm: int = 60):
-        self.default_rpm = default_rpm
-        self.history = defaultdict(list)
-        self.lock = threading.Lock()
-
-    def is_allowed(self, client_ip: str) -> bool:
-        rpm = int(os.getenv("RATE_LIMIT_PER_MINUTE", str(self.default_rpm)))
-        now = time.time()
-        with self.lock:
-            self.history[client_ip] = [t for t in self.history[client_ip] if now - t < 60.0]
-            if len(self.history[client_ip]) >= rpm:
-                return False
-            self.history[client_ip].append(now)
-            return True
-
-
-rate_limiter = SimpleRateLimiter()
-
+from audio_analyzer.api.rate_limiter import rate_limiter
 
 # --- Endpoints ---
 @router.post("/analyze", response_model=JobCreateResponse, status_code=202)
@@ -129,20 +103,17 @@ async def upload_and_analyze_audio(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     callback_url: Optional[str] = Form(None),
+    external_id: Optional[str] = Form(None),
     repository: ITranscriptRepository = Depends(get_repository),
     _api_key: Optional[str] = Depends(verify_api_key),
 ):
     """
     Ses dosyasını yükler, validasyondan geçirir, PENDING durumuyla kaydeder
     ve analizi ASENKRON başlatır (HTTP 202 Accepted).
-    Rate-limiting (DoS koruması) uygulanır.
+    Redis tabanlı Dağıtık Rate-limiting ve external_id İdempotency uygulanır.
     """
-    client_ip = request.client.host if request and request.client else "127.0.0.1"
-    if not rate_limiter.is_allowed(client_ip):
-        raise HTTPException(
-            status_code=429,
-            detail="Çok fazla analiz isteği gönderildi (Rate limit aşıldı). Lütfen bir dakika bekleyin.",
-        )
+    await rate_limiter.check_rate_limit(request)
+
     if not file.filename:
         raise HTTPException(status_code=400, detail="Ses dosyası adı boş olamaz.")
 
@@ -174,7 +145,10 @@ async def upload_and_analyze_audio(
 
     storage = get_storage_adapter()
     job_service = JobService(storage=storage, repository=repository)
-    job_id = await job_service.create_job(file_name=file.filename, file_bytes=file_bytes, callback_url=callback_url)
+    job_id = await job_service.create_job(
+        file_name=file.filename, file_bytes=file_bytes, callback_url=callback_url, external_id=external_id
+    )
+
 
     use_redis_stream = os.getenv("USE_REDIS_STREAM", "false").lower() == "true" or os.getenv("USE_REDIS_QUEUE", "false").lower() == "true"
 

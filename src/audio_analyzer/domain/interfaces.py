@@ -49,6 +49,29 @@ class ITranscriptRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_record_by_external_id(self, external_id: str) -> Optional[AudioRecord]:
+        """Dış sistem ID'sine (external_id) göre ses kaydını getirir (Idempotency tespiti)."""
+        pass
+
+    @abstractmethod
+    async def create_webhook_delivery(self, job_id: uuid.UUID, url: str, payload: str) -> uuid.UUID:
+        """Outbox deseni için webhook teslimat kaydı oluşturur."""
+        pass
+
+    @abstractmethod
+    async def get_due_webhook_deliveries(self, limit: int = 50) -> List[dict]:
+        """Teslimat zamanı gelmiş PENDING durumdaki webhook kayıtlarını getirir."""
+        pass
+
+    @abstractmethod
+    async def update_webhook_delivery_status(
+        self, delivery_id: uuid.UUID, status: str, attempts: int, next_attempt_at: Optional[object] = None, error_message: Optional[str] = None
+    ) -> bool:
+        """Webhook teslimat durumunu günceller."""
+        pass
+
+
+    @abstractmethod
     async def claim_job_atomically(
         self, record_id: uuid.UUID, stale_seconds: int = 1800
     ) -> Tuple[bool, Optional[AudioRecord], bool]:

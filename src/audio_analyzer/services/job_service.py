@@ -50,16 +50,29 @@ class JobService:
         self.repo = repository
         self.pipeline = pipeline
 
-    async def create_job(self, file_name: str, file_bytes: bytes, callback_url: Optional[str] = None) -> uuid.UUID:
+    async def create_job(
+        self,
+        file_name: str,
+        file_bytes: bytes,
+        callback_url: Optional[str] = None,
+        external_id: Optional[str] = None,
+    ) -> uuid.UUID:
         """
         Yeni bir analiz görevi oluşturur (status='PENDING').
-        Ses dosyasını depolamaya kaydeder ve DB kaydını açar.
+        İdempotency: external_id verilmişse ve aynı kaydolmuş iş varsa tekrar oluşturma, var olan job_id'yi dön.
         """
+        if external_id:
+            existing = await self.repo.get_record_by_external_id(external_id)
+            if existing:
+                logger.info("External ID '%s' ile eşleşen kayıt (%s) bulundu, mevcut job_id dönülüyor.", external_id, existing.id)
+                return existing.id
+
         storage_uri = await asyncio.to_thread(self.storage.save, file_bytes, file_name)
         record_id = uuid.uuid4()
 
         record = AudioRecord(
             id=record_id,
+            external_id=external_id,
             storage_uri=storage_uri,
             file_name=file_name,
             status=JobStatus.PENDING,
@@ -84,9 +97,10 @@ class JobService:
         Arka plan worker'ı tarafından çağrılır.
         Kısa transaction ile durumu 'PROCESSING' yapar, DB bağlantısını serbest bırakarak pipeline'ı çalıştırır.
         Hata durumunda hata sınıflandırmasına (kalıcı vs geçici) göre retry veya FAILED kararı verir.
+        Webhook istekleri Outbox tablosuna yazılır (CPU worker'ı yavaş/kapalı alıcılar için bekletilmez).
         Döner: (status_str, attempts, error_message)
-          status_str: 'COMPLETED', 'RETRY', 'FAILED', 'SKIPPED'
         """
+        import json
         import os
 
         stale_sec = int(os.getenv("PROCESSING_STALE_SEC", "1800"))
@@ -156,11 +170,8 @@ class JobService:
             # Başarılı ise sonuçları ve dili kaydet (COMPLETED)
             await self.repo.save_utterances(record_id, utterances, language=language)
 
-            # Webhook callback tanımlıysa gönder
+            # Webhook Outbox: Sonuç ile aynı akışta webhook_deliveries tablosuna yaz
             if record.callback_url:
-                from audio_analyzer.services.webhook_service import WebhookService
-
-                webhook_svc = WebhookService()
                 payload = {
                     "job_id": str(record_id),
                     "file_name": record.file_name,
@@ -177,7 +188,9 @@ class JobService:
                         for u in utterances
                     ],
                 }
-                await webhook_svc.send_callback_async(record.callback_url, payload)
+                await self.repo.create_webhook_delivery(
+                    job_id=record_id, url=record.callback_url, payload=json.dumps(payload)
+                )
 
             return "COMPLETED", record.attempts, None
 
@@ -194,9 +207,6 @@ class JobService:
             )
 
             if is_final_failed and record.callback_url:
-                from audio_analyzer.services.webhook_service import WebhookService
-
-                webhook_svc = WebhookService()
                 payload = {
                     "job_id": str(record_id),
                     "file_name": record.file_name,
@@ -204,8 +214,11 @@ class JobService:
                     "attempts": attempts,
                     "error_message": sanitized_msg,
                 }
-                await webhook_svc.send_callback_async(record.callback_url, payload)
+                await self.repo.create_webhook_delivery(
+                    job_id=record_id, url=record.callback_url, payload=json.dumps(payload)
+                )
 
             result_status = "FAILED" if is_final_failed else "RETRY"
             return result_status, attempts, sanitized_msg
+
 

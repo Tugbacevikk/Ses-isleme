@@ -99,3 +99,14 @@ def get_uow() -> SqlAlchemyUnitOfWork:
     """Unit of Work örneği sağlar."""
     return SqlAlchemyUnitOfWork(session_factory=AsyncSessionLocal)
 
+
+def get_uow_with_engine(eng=None) -> SqlAlchemyUnitOfWork:
+    """Verilen veya varsayılan engine ile Unit of Work örneği sağlar."""
+    if eng is None:
+        return get_uow()
+    session_factory = async_sessionmaker(
+        bind=eng, autoflush=False, expire_on_commit=False, class_=AsyncSession
+    )
+    return SqlAlchemyUnitOfWork(session_factory=session_factory)
+
+

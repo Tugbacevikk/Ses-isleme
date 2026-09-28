@@ -25,6 +25,7 @@ class AudioRecordModel(Base):
     __tablename__ = "audio_records"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True, index=True)
     storage_uri: Mapped[str] = mapped_column(String(512), nullable=False)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -47,6 +48,9 @@ class AudioRecordModel(Base):
 
     # 1-to-N ilişki: Bir ses kaydının birden fazla konuşmacı cümlesi olur.
     utterances: Mapped[list["TranscriptUtteranceModel"]] = relationship(
+        back_populates="audio_record", cascade="all, delete-orphan"
+    )
+    webhook_deliveries: Mapped[list["WebhookDeliveryModel"]] = relationship(
         back_populates="audio_record", cascade="all, delete-orphan"
     )
 
@@ -76,3 +80,39 @@ class TranscriptUtteranceModel(Base):
         Index("idx_utterances_audio_id", "audio_record_id"),
         Index("idx_utterances_speaker", "speaker_id"),
     )
+
+
+class WebhookDeliveryModel(Base):
+    """
+    Webhook Outbox Tablosu.
+    Görüşme sonuçlarının harici servisi bekletmeyen ve yeniden denenebilir teslimat takibi.
+    """
+
+    __tablename__ = "webhook_deliveries"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("audio_records.id", ondelete="CASCADE"), nullable=False
+    )
+    url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, server_default=func.now()
+    )
+    status: Mapped[str] = mapped_column(String(50), default="PENDING")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, server_default=func.now()
+    )
+
+    audio_record: Mapped["AudioRecordModel"] = relationship(back_populates="webhook_deliveries")
+
+    __table_args__ = (
+        Index("idx_webhook_deliveries_status_next", "status", "next_attempt_at"),
+        Index("idx_webhook_deliveries_job_id", "job_id"),
+    )
+

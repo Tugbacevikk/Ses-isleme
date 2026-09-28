@@ -105,6 +105,7 @@ class AudioRecord(BaseModel):
     """Ses kaydı domain varlığı."""
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    external_id: Optional[str] = None
     storage_uri: str
     file_name: str
     duration_seconds: Optional[float] = None
@@ -122,4 +123,5 @@ class AudioRecord(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     utterances: List[TranscriptUtterance] = Field(default_factory=list)
+
 

@@ -43,6 +43,7 @@ class PostgresRepository(ITranscriptRepository):
     async def save_record(self, record: AudioRecord) -> AudioRecord:
         orm_model = AudioRecordModel(
             id=record.id,
+            external_id=record.external_id,
             storage_uri=record.storage_uri,
             file_name=record.file_name,
             duration_seconds=record.duration_seconds,
@@ -74,6 +75,93 @@ class PostgresRepository(ITranscriptRepository):
         if not orm_model:
             return None
         return self._to_domain(orm_model)
+
+    async def get_record_by_external_id(self, external_id: str) -> Optional[AudioRecord]:
+        stmt = (
+            select(AudioRecordModel)
+            .where(AudioRecordModel.external_id == external_id)
+            .options(selectinload(AudioRecordModel.utterances))
+        )
+        res = await self.session.execute(stmt)
+        orm_model = res.scalar_one_or_none()
+        if not orm_model:
+            return None
+        return self._to_domain(orm_model)
+
+    async def create_webhook_delivery(self, job_id: uuid.UUID, url: str, payload: str) -> uuid.UUID:
+        from audio_analyzer.adapters.repository.models import WebhookDeliveryModel
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        delivery_id = uuid.uuid4()
+        orm_model = WebhookDeliveryModel(
+            id=delivery_id,
+            job_id=job_id,
+            url=url,
+            payload=payload,
+            attempts=0,
+            next_attempt_at=now,
+            status="PENDING",
+            created_at=now,
+            updated_at=now,
+        )
+        self.session.add(orm_model)
+        await self._commit_or_flush()
+        return delivery_id
+
+    async def get_due_webhook_deliveries(self, limit: int = 50) -> List[dict]:
+        from audio_analyzer.adapters.repository.models import WebhookDeliveryModel
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        stmt = (
+            select(WebhookDeliveryModel)
+            .where(
+                WebhookDeliveryModel.status == "PENDING",
+                WebhookDeliveryModel.next_attempt_at <= now,
+            )
+            .order_by(WebhookDeliveryModel.next_attempt_at.asc())
+            .limit(limit)
+        )
+        res = await self.session.execute(stmt)
+        orm_list = res.scalars().all()
+        return [
+            {
+                "id": r.id,
+                "job_id": r.job_id,
+                "url": r.url,
+                "payload": r.payload,
+                "attempts": r.attempts,
+                "next_attempt_at": r.next_attempt_at,
+                "status": r.status,
+                "error_message": r.error_message,
+            }
+            for r in orm_list
+        ]
+
+    async def update_webhook_delivery_status(
+        self, delivery_id: uuid.UUID, status: str, attempts: int, next_attempt_at: Optional[object] = None, error_message: Optional[str] = None
+    ) -> bool:
+        from audio_analyzer.adapters.repository.models import WebhookDeliveryModel
+        from datetime import datetime, timezone
+
+        stmt = select(WebhookDeliveryModel).where(WebhookDeliveryModel.id == delivery_id)
+        res = await self.session.execute(stmt)
+        orm_model = res.scalar_one_or_none()
+        if not orm_model:
+            return False
+
+        orm_model.status = status
+        orm_model.attempts = attempts
+        orm_model.updated_at = datetime.now(timezone.utc)
+        if next_attempt_at:
+            orm_model.next_attempt_at = next_attempt_at
+        if error_message is not None:
+            orm_model.error_message = error_message
+
+        await self._commit_or_flush()
+        return True
+
 
     async def claim_job_atomically(
         self, record_id: uuid.UUID, stale_seconds: int = 1800
@@ -378,6 +466,7 @@ class PostgresRepository(ITranscriptRepository):
         ]
         return AudioRecord(
             id=orm.id,
+            external_id=getattr(orm, "external_id", None),
             storage_uri=orm.storage_uri,
             file_name=orm.file_name,
             duration_seconds=orm.duration_seconds,
@@ -395,3 +484,4 @@ class PostgresRepository(ITranscriptRepository):
             updated_at=orm.updated_at,
             utterances=domain_utterances,
         )
+

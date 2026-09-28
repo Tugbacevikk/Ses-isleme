@@ -44,15 +44,12 @@ async def test_execute_job_failure_does_not_leak_traceback(in_memory_db):
     assert "ValueError" in record.error_message
 
 
-async def test_execute_job_triggers_webhook_callback(in_memory_db, monkeypatch):
+async def test_execute_job_triggers_webhook_callback(in_memory_db):
     storage = InMemoryStorageAdapter()
     repository = PostgresRepository(session=in_memory_db)
 
     mock_pipeline = MagicMock()
     mock_pipeline.process.return_value = ([], "tr", None)
-
-    mock_send_callback = AsyncMock(return_value=True)
-    monkeypatch.setattr("audio_analyzer.services.webhook_service.WebhookService.send_callback_async", mock_send_callback)
 
     job_service = JobService(storage=storage, repository=repository, pipeline=mock_pipeline)
 
@@ -60,9 +57,14 @@ async def test_execute_job_triggers_webhook_callback(in_memory_db, monkeypatch):
     success = await job_service.execute_job(record_id)
 
     assert success is True
-    assert mock_send_callback.called
-    assert mock_send_callback.call_args[0][0] == "https://example.com/webhook"
-    assert mock_send_callback.call_args[0][1]["status"] == "COMPLETED"
+
+    # Webhook Outbox kontrolü: satır içi gönderim yerine outbox tablosuna yazılır
+    due = await repository.get_due_webhook_deliveries(limit=10)
+    assert len(due) == 1
+    assert due[0]["job_id"] == record_id
+    assert due[0]["url"] == "https://example.com/webhook"
+    assert due[0]["status"] == "PENDING"
+
 
 
 
