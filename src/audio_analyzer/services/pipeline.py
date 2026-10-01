@@ -111,8 +111,12 @@ class AudioAnalysisPipeline:
                 else:
                     should_denoise = True
 
+            import tempfile
+            import uuid
+
             if should_denoise and self.denoiser:
-                denoised_wav_path = str(Path(audio_path).with_suffix(".denoised.wav"))
+                temp_name = f"{Path(audio_path).stem}_{uuid.uuid4().hex[:8]}.denoised.wav"
+                denoised_wav_path = os.path.join(tempfile.gettempdir(), temp_name)
                 audio_after_denoise = self.denoiser.denoise(
                     input_path=audio_path, output_path=denoised_wav_path
                 )
@@ -122,7 +126,8 @@ class AudioAnalysisPipeline:
 
             # 2. Ses Ön İşleme & Normalizasyon (16kHz Mono WAV Dönüşümü)
             if self.audio_processor:
-                processed_wav_path = str(Path(working_path).with_suffix(".processed.wav"))
+                temp_name = f"{Path(working_path).stem}_{uuid.uuid4().hex[:8]}.processed.wav"
+                processed_wav_path = os.path.join(tempfile.gettempdir(), temp_name)
                 working_path = self.audio_processor.normalize_and_resample(
                     input_path=working_path,
                     output_path=processed_wav_path,
