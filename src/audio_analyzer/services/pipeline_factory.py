@@ -68,6 +68,17 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
     enable_denoiser = os.getenv("ENABLE_DENOISER", "true").lower() == "true"
     denoiser = DeepFilterDenoiser(enabled=enable_denoiser)
 
+    # 3. Modelleri sunucu açılışında belleğe ısındır (Warm-Up & Pre-Load)
+    try:
+        logger.info("Yapay Zeka modelleri (FasterWhisper & SpeechBrain) belleğe yükleniyor...")
+        if hasattr(stt_engine, "_lazy_load_model"):
+            stt_engine._lazy_load_model()
+        if hasattr(diarizer, "_load_classifier"):
+            diarizer._load_classifier()
+        logger.info("Yapay Zeka modelleri başarıyla yüklendi [HAZIR].")
+    except Exception as warm_err:
+        logger.warning("Model ön yükleme uyarısı: %s", warm_err)
+
     _cached_pipeline = AudioAnalysisPipeline(
         stt_engine=stt_engine,
         diarizer=diarizer,

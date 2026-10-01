@@ -12,5 +12,7 @@ from audio_analyzer.api.main import app
 import uvicorn
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     print("🚀 Ses Analizi Platformu Başlatılıyor (http://127.0.0.1:8000)...")
     uvicorn.run(app, host="127.0.0.1", port=8000)
