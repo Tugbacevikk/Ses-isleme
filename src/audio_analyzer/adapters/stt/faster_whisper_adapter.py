@@ -36,7 +36,7 @@ class FasterWhisperAdapter(ISTTEngine):
             try:
                 from faster_whisper import WhisperModel
 
-                cpu_threads = setup_cpu_thread_budget()
+                cpu_threads = min(4, setup_cpu_thread_budget())
                 try:
                     self._model = WhisperModel(
                         self.model_size,
