@@ -35,23 +35,8 @@ class IAudioStorage(ABC):
         pass
 
 
-class ITranscriptRepository(ABC):
-    """İlişkisel Veritabanı (PostgreSQL / SQLite) Asenkron Repository Soyut Arayüzü."""
-
-    @abstractmethod
-    async def save_record(self, record: AudioRecord) -> AudioRecord:
-        """Yeni bir ses kaydı meta verisini veritabanına ekler."""
-        pass
-
-    @abstractmethod
-    async def get_record_by_id(self, record_id: uuid.UUID) -> Optional[AudioRecord]:
-        """ID'ye göre ses kaydı ve zaman damgalı konuşmacı metinlerini getirir."""
-        pass
-
-    @abstractmethod
-    async def get_record_by_external_id(self, external_id: str) -> Optional[AudioRecord]:
-        """Dış sistem ID'sine (external_id) göre ses kaydını getirir (Idempotency tespiti)."""
-        pass
+class IWebhookOutboxRepository(ABC):
+    """Transactional Outbox deseni için Webhook teslimat yönetim soyut arayüzü (ISP Uyumlu)."""
 
     @abstractmethod
     async def create_webhook_delivery(self, job_id: uuid.UUID, url: str, payload: str) -> uuid.UUID:
@@ -68,6 +53,25 @@ class ITranscriptRepository(ABC):
         self, delivery_id: uuid.UUID, status: str, attempts: int, next_attempt_at: Optional[object] = None, error_message: Optional[str] = None
     ) -> bool:
         """Webhook teslimat durumunu günceller."""
+        pass
+
+
+class ITranscriptRepository(IWebhookOutboxRepository, ABC):
+    """İlişkisel Veritabanı (PostgreSQL / SQLite) Asenkron Repository Soyut Arayüzü."""
+
+    @abstractmethod
+    async def save_record(self, record: AudioRecord) -> AudioRecord:
+        """Yeni bir ses kaydı meta verisini veritabanına ekler."""
+        pass
+
+    @abstractmethod
+    async def get_record_by_id(self, record_id: uuid.UUID) -> Optional[AudioRecord]:
+        """ID'ye göre ses kaydı ve zaman damgalı konuşmacı metinlerini getirir."""
+        pass
+
+    @abstractmethod
+    async def get_record_by_external_id(self, external_id: str) -> Optional[AudioRecord]:
+        """Dış sistem ID'sine (external_id) göre ses kaydını getirir (Idempotency tespiti)."""
         pass
 
 

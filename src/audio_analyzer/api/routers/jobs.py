@@ -169,6 +169,12 @@ async def upload_and_analyze_audio(
                 headers={"Retry-After": "5"},
             )
     else:
+        env_mode = os.getenv("APP_ENV", os.getenv("ENV", "development")).lower()
+        if env_mode in {"production", "prod"}:
+            logger.warning(
+                "UYARI: Production ortamında in-process BackgroundTasks kullanımı yüksek GPU/CPU yükünde HTTP sunucusunu kilitleyebilir. 'USE_REDIS_STREAM=true' yapılandırılması şiddetle önerilir (Job ID: %s).",
+                job_id
+            )
         background_tasks.add_task(run_pipeline_background, str(job_id), file.filename, file_bytes)
 
 

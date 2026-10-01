@@ -9,11 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from audio_analyzer.adapters.repository.models import AudioRecordModel, TranscriptUtteranceModel, WebhookDeliveryModel
-from audio_analyzer.domain.interfaces import ITranscriptRepository
+from audio_analyzer.domain.interfaces import ITranscriptRepository, IWebhookOutboxRepository
 from audio_analyzer.domain.models import AudioRecord, JobStatus, TranscriptUtterance
 
 
-class PostgresRepository(ITranscriptRepository):
+class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
     """
     SQLAlchemy ile PostgreSQL (asyncpg) / SQLite (aiosqlite) asenkron veritabanı adaptörü.
     Clean Architecture gereği ORM nesneleri ile Domain modelleri arasında dönüşüm yapar.
