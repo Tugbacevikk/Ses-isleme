@@ -37,7 +37,10 @@ def setup_cpu_thread_budget(threads: Optional[int] = None) -> int:
     os.environ["WHISPER_CPU_THREADS"] = threads_str
     os.environ["OMP_NUM_THREADS"] = threads_str
     os.environ["MKL_NUM_THREADS"] = threads_str
-    os.environ["MKL_THREADING_LAYER"] = "GNU"
+    if os.name == "nt":
+        os.environ["MKL_THREADING_LAYER"] = "INTEL"
+    else:
+        os.environ["MKL_THREADING_LAYER"] = "GNU"
     os.environ["OPENBLAS_NUM_THREADS"] = threads_str
     os.environ["VECLIB_MAXIMUM_THREADS"] = threads_str
     os.environ["NUMEXPR_NUM_THREADS"] = threads_str
