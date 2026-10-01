@@ -92,7 +92,7 @@ class FasterWhisperAdapter(ISTTEngine):
         vad_params = dict(min_silence_duration_ms=1000, speech_pad_ms=400)
 
         prompt_str = self.initial_prompt or (
-            "Bu kayıt Türkçe dilinde net bir ses görüşmesidir. Lütfen kelimeleri doğru Türkçe karakterler (ç, ğ, ı, ö, ş, ü) ve noktalama işaretleriyle yazınız."
+            "Türkçe ses kaydı."
             if language == "tr"
             else None
         )
