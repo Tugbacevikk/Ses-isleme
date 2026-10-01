@@ -82,7 +82,7 @@ class AudioAnalysisPipeline:
         Returns: (List[TranscriptUtterance], detected_language, overlap_summary)
         """
         profile = os.getenv("PIPELINE_PROFILE", "full").lower()
-        min_diarize_sec = float(os.getenv("PIPELINE_MIN_DIARIZE_SEC", "10.0"))
+        min_diarize_sec = float(os.getenv("PIPELINE_MIN_DIARIZE_SEC", "2.0"))
         min_snr_db = float(os.getenv("PIPELINE_MIN_SNR_DB", "15.0"))
         domain_mode = os.getenv("DOMAIN_MODE")
         vad_engine = os.getenv("VAD_ENGINE", "faster_whisper").lower()
@@ -206,7 +206,7 @@ class AudioAnalysisPipeline:
         0-Disk I/O: Ses dosyasını doğrudan RAM bellek üzerinden işler.
         """
         profile = os.getenv("PIPELINE_PROFILE", "full").lower()
-        min_diarize_sec = float(os.getenv("PIPELINE_MIN_DIARIZE_SEC", "10.0"))
+        min_diarize_sec = float(os.getenv("PIPELINE_MIN_DIARIZE_SEC", "2.0"))
         min_snr_db = float(os.getenv("PIPELINE_MIN_SNR_DB", "15.0"))
         domain_mode = os.getenv("DOMAIN_MODE")
         vad_engine = os.getenv("VAD_ENGINE", "faster_whisper").lower()
