@@ -18,7 +18,9 @@ services:
       - USE_REDIS_STREAM=true
       - STORAGE_TYPE=disk
       - STORAGE_DIR=/app/storage/raw
-      - WHISPER_MODEL_SIZE=small
+      - WHISPER_MODEL_SIZE=medium
+      - WORKER_CPU_THREADS=4
+      - HF_HOME=/app/storage/cache
     volumes:
       - audio_storage:/app/storage
     depends_on:
@@ -41,7 +43,12 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - STORAGE_TYPE=disk
       - STORAGE_DIR=/app/storage/raw
-      - WHISPER_MODEL_SIZE=small
+      - WHISPER_MODEL_SIZE=medium
+      - WORKER_CPU_THREADS=4
+      - HF_HOME=/app/storage/cache
+      - USE_LLM=true
+      - OLLAMA_URL=http://host.docker.internal:11434/api/generate
+      - OLLAMA_MODEL=llama3.2
     volumes:
       - audio_storage:/app/storage
     depends_on:
@@ -50,7 +57,23 @@ services:
       redis:
         condition: service_started
 
-  # 2b. Sweeper Servisi (Yetim ve Askıda Kalan İşleri Toparlayıcı)
+  # 2b. Webhook Worker (Transactional Outbox Bildirim Servisi)
+  webhook_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: audio_analyzer_webhook_worker:latest
+    container_name: audio_analyzer_webhook_worker
+    restart: always
+    command: python -m audio_analyzer.workers.webhook_worker
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/audio_db
+      - WEBHOOK_SECRET=my_webhook_secret_key_67890
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # 2c. Sweeper Servisi (Yetim ve Askıda Kalan İşleri Toparlayıcı)
   sweeper:
     build:
       context: .
