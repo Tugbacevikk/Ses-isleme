@@ -30,6 +30,8 @@ def setup_cpu_thread_budget(threads: Optional[int] = None) -> int:
         cpu_cnt = os.cpu_count() or 4
         threads = min(4, max(1, cpu_cnt))
 
+    threads = min(4, max(1, threads))
+
     threads_str = str(threads)
     os.environ["WORKER_CPU_THREADS"] = threads_str
     os.environ["WHISPER_CPU_THREADS"] = threads_str
