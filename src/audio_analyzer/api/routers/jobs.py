@@ -279,18 +279,7 @@ async def get_job_audio_file(
 
     storage = get_storage_adapter()
 
-    # RAM (%100 0-Disk I/O) veya S3 depolamadan doğrudan bellek akışı (Streaming)
-    if hasattr(storage, "get_bytes"):
-        try:
-            audio_bytes = storage.get_bytes(record.storage_uri)
-            if audio_bytes and len(audio_bytes) > 0:
-                media_type, _ = mimetypes.guess_type(record.file_name)
-                if not media_type:
-                    media_type = "audio/wav"
-                return Response(content=audio_bytes, media_type=media_type)
-        except Exception as e:
-            logger.warning("RAM storage get_bytes note: %s", e)
-
+    # 1. Önce diski/yerel yolu dene (HTML5 <audio> Range requests & partial content streaming için FileResponse)
     try:
         local_path = storage.get_path(record.storage_uri)
         if local_path and os.path.exists(local_path):
@@ -300,6 +289,18 @@ async def get_job_audio_file(
             return FileResponse(path=local_path, media_type=media_type, filename=record.file_name)
     except Exception as e:
         logger.warning("Storage get_path note: %s", e)
+
+    # 2. Disk yolu bulunamazsa RAM bellek akışı olarak dön (RAM storage fallback)
+    if hasattr(storage, "get_bytes"):
+        try:
+            audio_bytes = storage.get_bytes(record.storage_uri)
+            if audio_bytes and len(audio_bytes) > 0:
+                media_type, _ = mimetypes.guess_type(record.file_name)
+                if not media_type:
+                    media_type = "audio/wav"
+                return Response(content=audio_bytes, media_type=media_type, headers={"Accept-Ranges": "bytes"})
+        except Exception as e:
+            logger.warning("RAM storage get_bytes note: %s", e)
 
     raise HTTPException(status_code=404, detail="Ses dosyası depolamada veya diskte bulunamadı.")
 
