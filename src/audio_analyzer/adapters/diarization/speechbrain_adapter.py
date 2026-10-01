@@ -150,7 +150,7 @@ class SpeechBrainECAPADiarizer(IDiarizer):
             norms = np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8
             unit_embs = embeddings / norms
 
-            dist_thresh = float(os.getenv("DIARIZATION_THRESHOLD", "0.42"))
+            dist_thresh = float(os.getenv("DIARIZATION_THRESHOLD", "0.50"))
 
             if len(unit_embs) == 1:
                 raw_valid_labels = np.zeros(1, dtype=int)
@@ -191,7 +191,7 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                     val_idx += 1
                 raw_labels[i] = last_lbl
 
-            k_size = min(5, len(raw_labels))
+            k_size = min(9, len(raw_labels))
             if k_size % 2 == 0:
                 k_size = max(1, k_size - 1)
             final_labels = (
