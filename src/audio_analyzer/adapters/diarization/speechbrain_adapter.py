@@ -232,13 +232,15 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                 return fallback_diarizer.diarize(audio_input)
             else:
                 # If audio_input is array, create temporary audio file for spectral fallback
-                import soundfile as sf
                 import tempfile
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                    tmp_path = tmp.name
+                import uuid
+                tmp_path = os.path.join(tempfile.gettempdir(), f"diar_tmp_{uuid.uuid4().hex}.wav")
                 sf.write(tmp_path, audio_input, 16000, subtype="PCM_16")
                 try:
                     return fallback_diarizer.diarize(tmp_path)
                 finally:
                     if os.path.exists(tmp_path):
-                        os.unlink(tmp_path)
+                        try:
+                            os.unlink(tmp_path)
+                        except Exception as clean_err:
+                            logger.warning("Geçici dosya silinirken hata: %s", clean_err)

@@ -119,6 +119,8 @@ class JobService:
             logger.info("Job %s başka bir worker tarafından işleniyor veya zaman aşımına uğramamış, atlanıyor.", record_id)
             return "SKIPPED", 0, None
 
+        logger.info("Ses analizi görevi işleniyor (job_id=%s, dosya=%s)...", record_id, record.file_name)
+
         # --- DB BAĞLANTISI SERBEST: AI Pipeline (CPU/GPU) Thread Pool'da Yürütülür ---
         try:
             if self.pipeline is None:
@@ -161,9 +163,31 @@ class JobService:
 
             if not res or not isinstance(res, (tuple, list)) or len(res) < 3:
                 local_path = await asyncio.to_thread(self.storage.get_path, record.storage_uri)
-                res = await asyncio.to_thread(
-                    self.pipeline.process, local_path
-                )
+                temp_local_file = None
+                try:
+                    if (not local_path or not os.path.exists(local_path)) and file_bytes:
+                        import tempfile
+                        from pathlib import Path
+
+                        suffix = Path(record.file_name or "audio.wav").suffix or ".wav"
+                        temp_name = f"job_tmp_{uuid.uuid4().hex}{suffix}"
+                        temp_path = os.path.join(tempfile.gettempdir(), temp_name)
+                        with open(temp_path, "wb") as f:
+                            f.write(file_bytes)
+                        local_path = temp_path
+                        temp_local_file = temp_path
+
+                    res = await asyncio.to_thread(
+                        self.pipeline.process, local_path
+                    )
+                finally:
+                    if temp_local_file and os.path.exists(temp_local_file):
+                        try:
+                            os.remove(temp_local_file)
+                        except Exception as clean_err:
+                            logger.warning("Geçici dosya silinemedi: %s", clean_err)
+
+            logger.info("Ses analizi başarıyla tamamlandı (job_id=%s, dil=%s).", record_id, res[1])
 
             utterances, language, overlap_summary = res[0], res[1], res[2]
 

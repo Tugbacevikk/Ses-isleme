@@ -37,13 +37,36 @@ class FasterWhisperAdapter(ISTTEngine):
                 from faster_whisper import WhisperModel
 
                 cpu_threads = setup_cpu_thread_budget()
-                self._model = WhisperModel(
-                    self.model_size,
-                    device=self.device_config.device,
-                    compute_type=self.device_config.compute_type,
-                    device_index=self.device_config.device_index,
-                    cpu_threads=cpu_threads,
-                )
+                try:
+                    self._model = WhisperModel(
+                        self.model_size,
+                        device=self.device_config.device,
+                        compute_type=self.device_config.compute_type,
+                        device_index=self.device_config.device_index,
+                        cpu_threads=cpu_threads,
+                    )
+                except Exception as first_err:
+                    if "mkl_malloc" in str(first_err).lower() or "memory" in str(first_err).lower():
+                        logger.warning("WhisperModel 1. yükleme uyarısı (%s), daha hafif model 'small' / cpu_threads=1 ile tekrar deneniyor.", first_err)
+                        try:
+                            self._model = WhisperModel(
+                                "small",
+                                device=self.device_config.device,
+                                compute_type=self.device_config.compute_type,
+                                device_index=self.device_config.device_index,
+                                cpu_threads=1,
+                            )
+                        except Exception as second_err:
+                            logger.warning("WhisperModel small yükleme uyarısı (%s), 'tiny' (int8) modeline düşülüyor.", second_err)
+                            self._model = WhisperModel(
+                                "tiny",
+                                device=self.device_config.device,
+                                compute_type="int8",
+                                device_index=self.device_config.device_index,
+                                cpu_threads=1,
+                            )
+                    else:
+                        raise first_err
 
                 try:
                     from faster_whisper import BatchedInferencePipeline
