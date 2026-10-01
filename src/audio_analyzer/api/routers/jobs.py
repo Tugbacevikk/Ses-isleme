@@ -285,12 +285,15 @@ async def get_job_audio_file(
         except Exception as e:
             logger.warning("RAM storage get_bytes note: %s", e)
 
-    local_path = storage.get_path(record.storage_uri)
-    if os.path.exists(local_path):
-        media_type, _ = mimetypes.guess_type(local_path)
-        if not media_type:
-            media_type = "audio/wav"
-        return FileResponse(path=local_path, media_type=media_type, filename=record.file_name)
+    try:
+        local_path = storage.get_path(record.storage_uri)
+        if local_path and os.path.exists(local_path):
+            media_type, _ = mimetypes.guess_type(local_path)
+            if not media_type:
+                media_type = "audio/wav"
+            return FileResponse(path=local_path, media_type=media_type, filename=record.file_name)
+    except Exception as e:
+        logger.warning("Storage get_path note: %s", e)
 
     raise HTTPException(status_code=404, detail="Ses dosyası depolamada veya diskte bulunamadı.")
 
