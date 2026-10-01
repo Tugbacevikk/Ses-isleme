@@ -58,13 +58,14 @@ def create_async_db_engine(db_url: str):
         if is_testing:
             return create_async_engine(async_url, echo=False, poolclass=NullPool)
 
-        # PostgreSQL Kurumsal Asenkron Bağlantı Havuzu
+        # PostgreSQL Kurumsal Asenkron Bağlantı Havuzu (High Concurrency & Load Balancing)
         return create_async_engine(
             async_url,
             echo=False,
             pool_size=int(os.getenv("DB_POOL_SIZE", "20")),
-            max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "10")),
+            max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "30")),
             pool_recycle=3600,
+            pool_pre_ping=True,
         )
 
 
