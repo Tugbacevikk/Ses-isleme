@@ -15,18 +15,18 @@ class SemanticRefiner:
     def __init__(
         self,
         domain_mode: Optional[str] = None,
-        use_llm: bool = False,
-        ollama_url: str = "http://localhost:11434/api/generate",
-        model_name: str = "llama3.2",
+        use_llm: Optional[bool] = None,
+        ollama_url: Optional[str] = None,
+        model_name: Optional[str] = None,
         custom_triggers: Optional[Dict[str, List[str]]] = None,
     ):
-        import os
+        from audio_analyzer.config import get_settings
 
-        domain_mode = domain_mode or os.getenv("DOMAIN_MODE")
-        self.domain_mode = domain_mode
-        self.use_llm = use_llm or (os.getenv("USE_LLM", "false").lower() == "true")
-        self.ollama_url = os.getenv("OLLAMA_URL", ollama_url)
-        self.model_name = os.getenv("OLLAMA_MODEL", model_name)
+        settings = get_settings()
+        self.domain_mode = domain_mode if domain_mode is not None else settings.domain_mode
+        self.use_llm = use_llm if use_llm is not None else settings.use_llm
+        self.ollama_url = ollama_url or settings.ollama_url
+        self.model_name = model_name or settings.ollama_model
 
         # Varsayılan genel amaçlı modda alan tetikleyicileri boştur (domain-agnostic).
         self.agent_triggers: List[str] = []

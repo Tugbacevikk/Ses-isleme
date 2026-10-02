@@ -2,7 +2,7 @@ import logging
 import os
 from typing import Optional
 
-os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+from audio_analyzer.config import get_settings
 from audio_analyzer.adapters.audio.audio_converter import AudioConverterProcessor
 from audio_analyzer.adapters.audio.silero_vad import SileroVADProcessor
 from audio_analyzer.domain.models import DeviceConfig
@@ -10,11 +10,7 @@ from audio_analyzer.services.fusion_engine import FusionEngine
 from audio_analyzer.services.pipeline import AudioAnalysisPipeline
 from audio_analyzer.services.semantic_refiner import SemanticRefiner
 
-from dotenv import load_dotenv
-
 logger = logging.getLogger(__name__)
-
-load_dotenv()
 
 _cached_pipeline: Optional[AudioAnalysisPipeline] = None
 
@@ -36,11 +32,12 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
     if _cached_pipeline is not None:
         return _cached_pipeline
 
+    settings = get_settings()
     device_config = DeviceConfig()
 
-    # Ortam değişkenlerinden blueprint parametrelerini oku (Hızlı ve dengeli analiz için 'small')
-    whisper_model_size = os.getenv("WHISPER_MODEL_SIZE", "small")
-    max_silence_threshold = float(os.getenv("MAX_SILENCE_THRESHOLD", "1.5"))
+    # Ortam değişkenlerinden blueprint parametrelerini oku
+    whisper_model_size = settings.whisper_model_size
+    max_silence_threshold = settings.max_silence_threshold
 
     # 1. STT Engine (FasterWhisper)
     try:

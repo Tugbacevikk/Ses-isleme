@@ -1,0 +1,78 @@
+import os
+from dataclasses import dataclass, field
+from typing import Optional
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+@dataclass
+class Settings:
+    """
+    Sistem genelindeki tüm konfigürasyon ve ortam değişkenlerinin
+    tek bir noktadan yönetildiği ve doğrulandığı merkezi Settings sınıfı.
+    """
+
+    # 1. API & Güvenlik
+    api_key: str = field(default_factory=lambda: os.getenv("API_KEY", ""))
+    webhook_secret: str = field(default_factory=lambda: os.getenv("WEBHOOK_SECRET", "my_webhook_secret_key_67890"))
+
+    # 2. Veritabanı & Depolama
+    database_url: str = field(
+        default_factory=lambda: os.getenv(
+            "DATABASE_URL", "postgresql://postgres:postgres_secure_pass_2026@localhost:5432/audio_db"
+        )
+    )
+    allow_sqlite_fallback: bool = field(
+        default_factory=lambda: os.getenv("ALLOW_SQLITE_FALLBACK", "false").lower() == "true"
+    )
+    storage_type: str = field(default_factory=lambda: os.getenv("STORAGE_TYPE", "disk"))
+    storage_dir: str = field(default_factory=lambda: os.getenv("STORAGE_DIR", "storage/raw"))
+    memory_storage_max_bytes: int = field(
+        default_factory=lambda: int(os.getenv("MEMORY_STORAGE_MAX_BYTES", "536870912"))
+    )
+
+    # 3. Mesajlaşma & Kuyruk
+    use_redis_stream: bool = field(
+        default_factory=lambda: os.getenv("USE_REDIS_STREAM", "false").lower() == "true"
+    )
+    redis_url: str = field(default_factory=lambda: os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+
+    # 4. Yapay Zeka Model Yapılandırması
+    whisper_model_size: str = field(default_factory=lambda: os.getenv("WHISPER_MODEL_SIZE", "small"))
+    whisper_beam_size: int = field(default_factory=lambda: int(os.getenv("WHISPER_BEAM_SIZE", "1")))
+    worker_cpu_threads: int = field(default_factory=lambda: int(os.getenv("WORKER_CPU_THREADS", "4")))
+    diarization_step_sec: float = field(default_factory=lambda: float(os.getenv("DIARIZATION_STEP_SEC", "0.75")))
+    diarization_threshold: float = field(default_factory=lambda: float(os.getenv("DIARIZATION_THRESHOLD", "0.80")))
+    target_num_speakers: Optional[int] = field(
+        default_factory=lambda: int(os.getenv("TARGET_NUM_SPEAKERS", os.getenv("NUM_SPEAKERS", "2")))
+        if os.getenv("TARGET_NUM_SPEAKERS") or os.getenv("NUM_SPEAKERS")
+        else 2
+    )
+    max_silence_threshold: float = field(default_factory=lambda: float(os.getenv("MAX_SILENCE_THRESHOLD", "1.5")))
+    enable_denoiser: bool = field(
+        default_factory=lambda: os.getenv("ENABLE_DENOISER", "false").lower() == "true"
+    )
+
+    # 5. SemanticRefiner & Yerel LLM
+    domain_mode: Optional[str] = field(default_factory=lambda: os.getenv("DOMAIN_MODE"))
+    use_llm: bool = field(default_factory=lambda: os.getenv("USE_LLM", "false").lower() == "true")
+    ollama_url: str = field(default_factory=lambda: os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate"))
+    ollama_model: str = field(default_factory=lambda: os.getenv("OLLAMA_MODEL", "llama3.2"))
+
+
+_settings_instance: Optional[Settings] = None
+
+
+def get_settings() -> Settings:
+    """Merkezi Settings nesnesinin singleton erişim fonksiyonu."""
+    global _settings_instance
+    if _settings_instance is None:
+        _settings_instance = Settings()
+    return _settings_instance
+
+
+def reset_settings():
+    """Testler sırasında konfigürasyonu yeniden yüklemek için kullanılır."""
+    global _settings_instance
+    _settings_instance = None

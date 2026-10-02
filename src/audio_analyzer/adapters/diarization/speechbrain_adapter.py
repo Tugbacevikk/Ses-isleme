@@ -5,7 +5,8 @@ from typing import List, Optional, Union
 import numpy as np
 import torch
 
-from audio_analyzer.domain.interfaces import IDiarizer
+from audio_analyzer.adapters.audio.rust_dsp_adapter import RustAudioDSPProcessor
+from audio_analyzer.domain.interfaces import IAudioProcessor, IDiarizer
 from audio_analyzer.domain.models import DeviceConfig, DiarizationSegment
 
 logger = logging.getLogger(__name__)
@@ -23,10 +24,12 @@ class SpeechBrainECAPADiarizer(IDiarizer):
         device_config: DeviceConfig = None,
         num_speakers: Optional[int] = None,
         max_speakers: int = 10,
+        audio_processor: Optional[IAudioProcessor] = None,
     ):
         self.device_config = device_config or DeviceConfig()
         self.num_speakers = num_speakers
         self.max_speakers = max_speakers
+        self.audio_processor = audio_processor or RustAudioDSPProcessor()
         self._classifier = None
 
     def _load_classifier(self):
@@ -76,10 +79,8 @@ class SpeechBrainECAPADiarizer(IDiarizer):
 
             target_sr = 16000
             if sr != target_sr:
-                from math import gcd
-
-                g = gcd(int(sr), target_sr)
-                data = scipy.signal.resample_poly(data, target_sr // g, int(sr) // g)
+                data_list = self.audio_processor.fast_resample(data.tolist(), sr)
+                data = np.array(data_list, dtype=np.float32)
                 sr = target_sr
 
             win_sec = 1.2
