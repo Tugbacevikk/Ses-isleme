@@ -26,6 +26,13 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Tüm uygulama dosyalarının kopyalanması
 COPY . .
 
+# Güvenlik: Root olmayan yetkisiz kullanıcı (appuser) oluştur ve izinleri ayarla
+RUN useradd -m -u 1000 appuser && \
+    mkdir -p /app/storage/raw /app/storage/cache && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
 # Uygulama portunun açılması
 EXPOSE 8000
 

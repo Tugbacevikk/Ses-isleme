@@ -503,6 +503,10 @@
 
     <div class="container">
         <header>
+            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <label style="font-size: 0.85rem; color: var(--text-muted);">🔑 API Key:</label>
+                <input type="password" id="apiKeyInput" placeholder="API Key giriniz..." style="background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border-card); color: #f8fafc; padding: 0.4rem 0.75rem; border-radius: 0.5rem; font-size: 0.85rem; outline: none; width: 220px;" onchange="saveApiKey(this.value)">
+            </div>
             <div class="logo-badge">🎙️ Antigravity AI Engine</div>
             <h1>Ses Analizi ve Konuşmacı Algılama</h1>
             <p class="subtitle">Gelişmiş Yapay Zeka ile Otomatik Transkripsiyon ve Diyarizasyon</p>
@@ -687,6 +691,32 @@
                 .replace(/'/g, '&#39;');
         }
 
+        function getApiKey() {
+            return sessionStorage.getItem('api_key') || '';
+        }
+
+        function saveApiKey(val) {
+            sessionStorage.setItem('api_key', (val || '').trim());
+            showToast('API Key kaydedildi.', 'success');
+        }
+
+        function initApiKeyInput() {
+            const input = document.getElementById('apiKeyInput');
+            if (input) {
+                input.value = getApiKey();
+            }
+        }
+
+        async function apiFetch(url, options = {}) {
+            const apiKey = getApiKey();
+            const headers = new Headers(options.headers || {});
+            if (apiKey) {
+                headers.set('X-API-Key', apiKey);
+            }
+            const res = await fetch(url, { ...options, headers });
+            return res;
+        }
+
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const statusContainer = document.getElementById('statusContainer');
@@ -726,7 +756,7 @@
 
             try {
                 // 1. POST /api/v1/analyze
-                const response = await fetch('/api/v1/analyze', {
+                const response = await apiFetch('/api/v1/analyze', {
                     method: 'POST',
                     body: formData
                 });
@@ -759,12 +789,14 @@
         async function pollJobStatus(jobId) {
             const interval = setInterval(async () => {
                 try {
-                    const res = await fetch(`/api/v1/jobs/${jobId}`);
+                    const res = await apiFetch(`/api/v1/jobs/${jobId}`);
                     if (!res.ok) {
                         clearInterval(interval);
                         statusContainer.style.display = 'none';
                         if (res.status === 404) {
                             showToast('Analiz görevi bulunamadı (404).', 'error', 'Kayıt Bulunamadı');
+                        } else if (res.status === 401) {
+                            showToast('Yetkisiz erişim (401). Geçerli bir API Key girdiğinizden emin olun.', 'error');
                         }
                         return;
                     }
@@ -852,7 +884,7 @@
             };
         }
 
-        function renderResults(job) {
+        async function renderResults(job) {
             currentJobId = job.job_id;
             currentJobData = job;
             document.getElementById('metaFileName').textContent = job.file_name;
@@ -861,8 +893,21 @@
 
             const player = document.getElementById('mainAudioPlayer');
             if (player) {
-                player.src = `/api/v1/jobs/${job.job_id}/audio`;
-                player.load();
+                if (player.src && player.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(player.src);
+                }
+                try {
+                    const audioRes = await apiFetch(`/api/v1/jobs/${job.job_id}/audio`);
+                    if (audioRes.ok) {
+                        const blob = await audioRes.blob();
+                        player.src = URL.createObjectURL(blob);
+                        player.load();
+                    } else {
+                        showToast(`Ses dosyası yüklenemedi (HTTP ${audioRes.status})`, 'error');
+                    }
+                } catch (err) {
+                    console.error('Audio fetch hatası:', err);
+                }
             }
 
             utteranceList.innerHTML = '';
@@ -976,19 +1021,23 @@
             utts[idxB].text = textA;
 
             try {
-                await Promise.all([
-                    fetch(`/api/v1/jobs/${jobId}/utterances/${idxA}`, {
+                const [resA, resB] = await Promise.all([
+                    apiFetch(`/api/v1/jobs/${jobId}/utterances/${idxA}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ speaker_id: utts[idxA].speaker_id, text: utts[idxA].text })
                     }),
-                    fetch(`/api/v1/jobs/${jobId}/utterances/${idxB}`, {
+                    apiFetch(`/api/v1/jobs/${jobId}/utterances/${idxB}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ speaker_id: utts[idxB].speaker_id, text: utts[idxB].text })
                     })
                 ]);
-                showToast('Blok sırası güncellendi.', 'success');
+                if (resA.ok && resB.ok) {
+                    showToast('Blok sırası güncellendi.', 'success');
+                } else {
+                    showToast('Sıralama güncellenirken hata oluştu.', 'error');
+                }
             } catch (err) {
                 console.error('Sıralama güncellenirken hata:', err);
                 showToast('Sıralama güncellenirken hata oluştu.', 'error');
@@ -1010,7 +1059,7 @@
 
         async function fetchAndRefresh(jobId) {
             try {
-                const res = await fetch(`/api/v1/jobs/${jobId}?t=${Date.now()}`);
+                const res = await apiFetch(`/api/v1/jobs/${jobId}?t=${Date.now()}`);
                 if (!res.ok) throw new Error('Güncel veri alınamadı');
                 const job = await res.json();
                 renderResults(job);
@@ -1023,7 +1072,7 @@
         function deleteUtterance(jobId, target) {
             showConfirmModal('Konuşmacı Kutusunu Sil', 'Bu konuşmacı bloğunu silmek istediğinize emin misiniz?', async () => {
                 try {
-                    const res = await fetch(`/api/v1/jobs/${jobId}/utterances/${target}`, {
+                    const res = await apiFetch(`/api/v1/jobs/${jobId}/utterances/${target}`, {
                         method: 'DELETE'
                     });
                     if (res.ok) {
@@ -1051,7 +1100,7 @@
                     return;
                 }
                 try {
-                    const res = await fetch(`/api/v1/jobs/${jobId}/utterances`, {
+                    const res = await apiFetch(`/api/v1/jobs/${jobId}/utterances`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -1080,7 +1129,7 @@
             const textElem = document.getElementById(`text-${index}`);
             const text = textElem ? textElem.innerText : '';
             try {
-                const res = await fetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
+                const res = await apiFetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ speaker_id: newSpeaker, text: text })
@@ -1099,7 +1148,7 @@
 
         async function updateText(jobId, index, speakerId, newText) {
             try {
-                const res = await fetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
+                const res = await apiFetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ speaker_id: speakerId, text: newText })
@@ -1118,7 +1167,7 @@
             const selectElem = document.querySelectorAll('.speaker-select')[index];
             if (textElem && selectElem) {
                 try {
-                    const res = await fetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
+                    const res = await apiFetch(`/api/v1/jobs/${jobId}/utterances/${index}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ speaker_id: selectElem.value, text: textElem.innerText })
@@ -1146,7 +1195,7 @@
             const historyList = document.getElementById('historyList');
             if (!historyList) return;
             try {
-                const res = await fetch('/api/v1/jobs?skip=0&limit=10');
+                const res = await apiFetch('/api/v1/jobs?skip=0&limit=10');
                 if (!res.ok) return;
                 const jobs = await res.json();
                 if (jobs.length === 0) {
@@ -1183,7 +1232,7 @@
         function deleteJob(jobId) {
             showConfirmModal('Analiz Kaydını Sil', 'Bu ses analizi kaydını ve fiziki ses dosyasını tamamen silmek istediğinize emin misiniz?', async () => {
                 try {
-                    const res = await fetch(`/api/v1/jobs/${jobId}`, { method: 'DELETE' });
+                    const res = await apiFetch(`/api/v1/jobs/${jobId}`, { method: 'DELETE' });
                     if (res.ok) {
                         showToast('Ses analizi kaydı başarıyla silindi.', 'success');
                         if (currentJobId === jobId) {
@@ -1262,7 +1311,7 @@
 
         async function loadJobDetails(jobId) {
             try {
-                const res = await fetch(`/api/v1/jobs/${jobId}`);
+                const res = await apiFetch(`/api/v1/jobs/${jobId}`);
                 if (res.ok) {
                     const job = await res.json();
                     renderResults(job);
@@ -1277,7 +1326,10 @@
             }
         }
 
-        window.addEventListener('DOMContentLoaded', loadHistory);
+        window.addEventListener('DOMContentLoaded', () => {
+            initApiKeyInput();
+            loadHistory();
+        });
     </script>
 </body>
 </html>

@@ -33,15 +33,21 @@ MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB
 async def verify_api_key(api_key: Optional[str] = Depends(api_key_header)):
     """
     İsteğin X-API-Key başlığını doğrular. Ortam değişkeninde API_KEY tanımlıysa kontrol eder.
-    Tanımlı değilse (geliştirme modunda) doğrulama atlanır.
+    Tanımlı değilse APP_ENV=development haricinde erişimi engeller.
     Timing-attack saldırılarını önlemek için secrets.compare_digest kullanılır.
     """
-    expected_api_key = os.getenv("API_KEY")
+    expected_api_key = os.getenv("API_KEY", "").strip()
+    app_env = os.getenv("APP_ENV", os.getenv("ENV", "production")).lower()
+
     if expected_api_key:
         if not api_key or not secrets.compare_digest(api_key, expected_api_key):
             raise HTTPException(
                 status_code=401, detail="Geçersiz veya eksik API Anahtarı (X-API-Key header)."
             )
+    elif app_env != "development":
+        raise HTTPException(
+            status_code=401, detail="API Anahtarı yapılandırılmamış (Üretim ortamında API_KEY zorunludur)."
+        )
     return api_key
 
 
@@ -128,16 +134,30 @@ async def upload_and_analyze_audio(
             detail=f"Desteklenmeyen ses formatı '{ext}'. İzin verilen formatlar: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
         )
 
-    file_bytes = await file.read()
+    file_bytes_buf = bytearray()
+    chunk_size = 1024 * 1024  # 1 MB
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        file_bytes_buf.extend(chunk)
+        if len(file_bytes_buf) > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Dosya boyutu çok büyük ({len(file_bytes_buf) / (1024 * 1024):.1f} MB). Maksimum izin verilen limit: 100 MB.",
+            )
+    file_bytes = bytes(file_bytes_buf)
 
     if len(file_bytes) == 0:
         raise HTTPException(status_code=400, detail="Yüklenen ses dosyası boş (0 bayt) olamaz.")
 
-    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Dosya boyutu çok büyük ({len(file_bytes) / (1024 * 1024):.1f} MB). Maksimum izin verilen limit: 100 MB.",
-        )
+    if callback_url:
+        from audio_analyzer.utils.ssrf_validator import validate_callback_url
+        if not validate_callback_url(callback_url):
+            raise HTTPException(
+                status_code=400,
+                detail="Geçersiz veya güvensiz callback_url (SSRF koruması: Özel/yerel IP adresleri ve güvensiz protokoller kabul edilmez).",
+            )
 
     if not is_valid_audio_content(file_bytes, file.filename):
         raise HTTPException(

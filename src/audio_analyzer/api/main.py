@@ -3,12 +3,13 @@ import os
 import warnings
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import List, Optional, Tuple
 
 # Windows SYMLINK ve SpeechBrain önbellek uyarılarını bastır
 warnings.filterwarnings("ignore", category=UserWarning)
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -27,7 +28,15 @@ logging.basicConfig(
 logging.getLogger("speechbrain").setLevel(logging.ERROR)
 logging.getLogger("speechbrain.utils.fetching").setLevel(logging.ERROR)
 logging.getLogger("speechbrain.utils.parameter_transfer").setLevel(logging.ERROR)
-logger = logging.getLogger(__name__)
+def get_cors_config(allowed_origins_raw: Optional[str] = None) -> Tuple[List[str], bool]:
+    if allowed_origins_raw is None:
+        allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "")
+    origins = [o.strip() for o in allowed_origins_raw.split(",") if o.strip()]
+    if not origins:
+        return [], False
+    if "*" in origins:
+        return origins, False
+    return origins, True
 
 
 @asynccontextmanager
@@ -37,6 +46,15 @@ async def lifespan(app: FastAPI):
     Üretim (PostgreSQL) ortamlarında tek şema kaynağı Alembic'tir.
     `create_all` yalnızca yerel SQLite dev/test modunda tabloları otomatik oluşturur.
     """
+    app_env = os.getenv("APP_ENV", os.getenv("ENV", "production")).lower()
+    api_key = os.getenv("API_KEY", "").strip()
+    webhook_secret = os.getenv("WEBHOOK_SECRET", "").strip()
+    if app_env != "development":
+        if not api_key:
+            raise ValueError("Üretim ortamında (APP_ENV!=development) API_KEY tanımlanması zorunludur!")
+        if not webhook_secret:
+            raise ValueError("Üretim ortamında (APP_ENV!=development) WEBHOOK_SECRET tanımlanması zorunludur!")
+
     from audio_analyzer.adapters.storage.storage_factory import assert_storage_shared_across_processes
 
     assert_storage_shared_across_processes()
@@ -84,16 +102,28 @@ app = FastAPI(
 )
 
 # CORS Middleware (Kurumsal Üçüncü Parti İstemci Desteği)
-allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "*")
-allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
+allowed_origins, allow_credentials = get_cors_config()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def content_length_limit_middleware(request: Request, call_next):
+    if request.url.path.endswith("/analyze") and request.method == "POST":
+        content_length = request.headers.get("Content-Length")
+        max_size = 100 * 1024 * 1024  # 100 MB
+        if content_length and content_length.isdigit() and int(content_length) > max_size:
+            return Response(
+                content='{"detail":"Dosya boyutu çok büyük (Content-Length 100 MB üstünde)."}',
+                status_code=413,
+                media_type="application/json",
+            )
+    return await call_next(request)
 
 # APIRouter Kaydı
 app.include_router(jobs.router)

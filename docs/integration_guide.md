@@ -1,6 +1,6 @@
 # 🏢 Kurumsal Sistem Entegrasyonu & Webhook Kullanım Kılavuzu
 
-Bu doküman, Ses Analizi Platformu'nun Türkiye genelindeki üçüncü parti sistemlere (Şehir Hastaneleri HBYS, Çağrı Merkezleri, CRM, ERP) REST API ve **Asenkron Webhook (Geri Bildirim)** ile nasıl entegre edileceğini açıklar.
+Bu doküman, Ses Analizi Platformu'nun üçüncü parti sistemlere (Şehir Hastaneleri HBYS, Çağrı Merkezleri, CRM, ERP) REST API ve **Asenkron Webhook (Geri Bildirim)** ile nasıl entegre edileceğini açıklar.
 
 ---
 
@@ -22,17 +22,28 @@ uvicorn audio_analyzer.api.main:app --app-dir src --host 0.0.0.0 --port 8000
 
 ---
 
-## 2. 📤 Analiz İsteği Gönderme (API Endpoint)
+## 2. 🔑 API Kimlik Doğrulama & Güvenlik
+
+Sistem `X-API-Key` başlığı üzerinden kimlik doğrulama sağlar. Üretim ortamında (`APP_ENV != development`) `API_KEY` zorunludur.
+
+```http
+X-API-Key: your-secret-api-key
+```
+
+---
+
+## 3. 📤 Analiz İsteği Gönderme (API Endpoint)
 
 Dış sistemler ses analizi başlatmak için `POST /api/v1/analyze` servisini çağırır.
 
 ### İstek Parametreleri (Multipart Form Data):
 * `file`: Ses Dosyası (MP3, WAV, FLAC, M4A, OGG)
-* `callback_url` *(Opsiyonel)*: Analiz bittiğinde sonucun gönderileceği Webhook adresi.
+* `callback_url` *(Opsiyonel)*: Analiz bittiğinde sonucun gönderileceği Webhook adresi (Sadece HTTPS, private IP'ler engellenir).
 
 ### Örnek cURL İsteği:
 ```bash
 curl -X POST "http://localhost:8000/api/v1/analyze" \
+  -H "X-API-Key: your-secret-api-key" \
   -F "file=@/path/to/hastane_cagri_kaydi.wav" \
   -F "callback_url=https://hbys.hastane.gov.tr/api/audio-callback"
 ```
@@ -49,51 +60,94 @@ curl -X POST "http://localhost:8000/api/v1/analyze" \
 
 ---
 
-## 3. 🔔 Webhook (Callback) Geri Bildirim Yapısı
+## 4. 🔔 Webhook (Callback) Geri Bildirim Yapısı
 
 Analiz **COMPLETED** veya **FAILED** durumuna ulaştığında, sistem belirttiğiniz `callback_url` adresine otomatik bir `HTTP POST` bildirimi gönderir.
 
 ### Webhook Başlıkları (Headers):
 ```http
 Content-Type: application/json; charset=utf-8
-User-Agent: Antigravity-Audio-Analyzer-Webhook/1.0
-X-Signature: 5a8d7e9f2b1a3c4d... (HMAC-SHA256 İmza Başlığı)
-```
-
-### Başarılı Analiz Payload Örneği (`COMPLETED`):
-```json
-{
-  "job_id": "7d972041-1744-4374-81eb-103a6fa303de",
-  "file_name": "hastane_cagri_kaydi.wav",
-  "status": "COMPLETED",
-  "language": "tr",
-  "utterances": [
-    {
-      "speaker_id": "SPEAKER_00",
-      "start_time": 0.5,
-      "end_time": 3.2,
-      "text": "Merhabalar, Şehir Hastanesi randevu hattına hoş geldiniz."
-    },
-    {
-      "speaker_id": "SPEAKER_01",
-      "start_time": 3.5,
-      "end_time": 6.8,
-      "text": "İyi günler, dahiliye polikliniginden randevu almak istiyorum."
-    }
-  ]
-}
+User-Agent: AudioAnalyzer-Webhook/1.0
+X-Timestamp: 1775130000
+X-Signature: sha256=5a8d7e9f2b1a3c4d... (HMAC-SHA256 İmza Başlığı)
 ```
 
 ---
 
-## 4. 🛡️ HMAC-SHA256 İmza Doğrulama (Güvenlik)
+## 5. 🛡️ HMAC-SHA256 İmza Doğrulama (Güvenlik Kılavuzu)
 
-Dış sistemler gelen Webhook isteğinin gerçekten bu sunucudan geldiğini doğrulamak için `X-Signature` başlığını kontrolden geçirebilir:
+Webhook çağrılarında imza üretimi şu formülle yapılır:
+$$\text{Signature} = \text{"sha256="} + \text{HMAC-SHA256}(\text{WEBHOOK\_SECRET}, \text{timestamp} + \text{"."} + \text{raw\_json\_body})$$
+
+Yeniden oynatma (replay attack) saldırılarını engellemek için alıcı sistemlerin timestamp farkını (maksimum 300 saniye / 5 dakika) kontrol etmesi tavsiye edilir.
+
+### 🐍 Python ile Alıcı Doğrulama Örneği (FastAPI / Flask):
 
 ```python
-import hashlib, hmac
+import time
+import hmac
+import hashlib
 
-def verify_webhook(payload_bytes: bytes, received_signature: str, secret_key: str) -> bool:
-    computed = hmac.new(secret_key.encode('utf-8'), payload_bytes, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(computed, received_signature)
+def verify_webhook_signature(
+    raw_body: bytes,
+    received_signature: str,
+    timestamp_header: str,
+    webhook_secret: str,
+    tolerance_seconds: int = 300
+) -> bool:
+    # 1. Replay attack kontrolü (5 dakika zaman toleransı)
+    try:
+        req_timestamp = int(timestamp_header)
+        if abs(time.time() - req_timestamp) > tolerance_seconds:
+            return False  # Zaman aşımı
+    except (ValueError, TypeError):
+        return False
+
+    # 2. HMAC-SHA256 hesaplama: sha256=HMAC(secret, f"{timestamp}.{body}")
+    body_str = raw_body.decode('utf-8')
+    expected_data = f"{timestamp_header}.{body_str}".encode('utf-8')
+    expected_hash = hmac.new(
+        webhook_secret.encode('utf-8'),
+        expected_data,
+        hashlib.sha256
+    ).hexdigest()
+    expected_signature = f"sha256={expected_hash}"
+
+    # 3. Sabit zamanlı güvenli karşılaştırma (Timing Attack Koruması)
+    return hmac.compare_digest(expected_signature, received_signature)
+```
+
+### 🟢 Node.js / Express ile Alıcı Doğrulama Örneği:
+
+```javascript
+const crypto = require('crypto');
+
+function verifyWebhookSignature(req, webhookSecret, toleranceSeconds = 300) {
+    const signatureHeader = req.headers['x-signature'];
+    const timestampHeader = req.headers['x-timestamp'];
+
+    if (!signatureHeader || !timestampHeader) return false;
+
+    // 1. Replay attack kontrolü
+    const now = Math.floor(Date.now() / 1000);
+    const reqTimestamp = parseInt(timestampHeader, 10);
+    if (isNaN(reqTimestamp) || Math.abs(now - reqTimestamp) > toleranceSeconds) {
+        return false;
+    }
+
+    // 2. HMAC-SHA256 hesaplama
+    const rawBody = req.body; // Raw string / Buffer body
+    const dataToSign = `${timestampHeader}.${rawBody}`;
+    const expectedHash = crypto
+        .createHmac('sha256', webhookSecret)
+        .update(dataToSign, 'utf8')
+        .digest('hex');
+    const expectedSignature = `sha256=${expectedHash}`;
+
+    // 3. Güvenli karşılaştırma
+    return crypto.timingSafeEqual(
+        Buffer.from(expectedSignature),
+        Buffer.from(signatureHeader)
+    );
+}
 ```

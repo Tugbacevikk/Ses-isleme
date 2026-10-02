@@ -48,10 +48,12 @@ def get_host_semaphore(url: str, max_concurrent: int) -> asyncio.Semaphore:
     return _host_semaphores[netloc]
 
 
-def sign_payload(payload_str: str, secret: str) -> str:
-    """Payload verisini HMAC SHA256 ile imzalar."""
-    sig = hmac.new(secret.encode("utf-8"), payload_str.encode("utf-8"), hashlib.sha256).hexdigest()
-    return f"sha256={sig}"
+def sign_payload(payload_str: str, secret: str, timestamp_str: str) -> str:
+    """Payload ve timestamp verisini HMAC SHA256 ile imzalar."""
+    from audio_analyzer.services.webhook_service import WebhookService
+
+    svc = WebhookService(secret_key=secret)
+    return svc.generate_signature(timestamp_str, payload_str)
 
 
 async def deliver_single_webhook(delivery: dict, engine, max_attempts: int, timeout_sec: float, host_concurrency: int, secret: Optional[str]) -> bool:
@@ -61,9 +63,28 @@ async def deliver_single_webhook(delivery: dict, engine, max_attempts: int, time
     payload_str = delivery["payload"]
     attempts = delivery["attempts"] + 1
 
-    headers = {"Content-Type": "application/json", "User-Agent": "AudioAnalyzer-WebhookWorker/1.0"}
+    from audio_analyzer.utils.ssrf_validator import validate_callback_url
+    if not validate_callback_url(url):
+        error_msg = f"SSRF Protection: Invalid or unsafe webhook URL '{url}'"
+        now = datetime.now(timezone.utc)
+        async with get_uow_with_engine(engine) as uow:
+            await uow.repository.update_webhook_delivery_status(
+                delivery_id=delivery_id,
+                status="DEAD",
+                attempts=attempts,
+                error_message=error_msg,
+            )
+            logger.warning("Webhook delivery %s -> %s BLOCKED BY SSRF VALIDATOR", delivery_id, url)
+            return False
+
+    timestamp_str = str(int(time.time()))
+    headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "User-Agent": "AudioAnalyzer-Webhook/1.0",
+        "X-Timestamp": timestamp_str,
+    }
     if secret:
-        headers["X-Signature"] = sign_payload(payload_str, secret)
+        headers["X-Signature"] = sign_payload(payload_str, secret, timestamp_str)
 
     sem = get_host_semaphore(url, host_concurrency)
     success = False
@@ -71,8 +92,8 @@ async def deliver_single_webhook(delivery: dict, engine, max_attempts: int, time
 
     async with sem:
         try:
-            async with httpx.AsyncClient(timeout=timeout_sec, follow_redirects=True) as client:
-                resp = await client.post(url, content=payload_str, headers=headers)
+            async with httpx.AsyncClient(timeout=timeout_sec, follow_redirects=False) as client:
+                resp = await client.post(url, content=payload_str.encode("utf-8"), headers=headers)
                 if resp.is_success:
                     success = True
                 else:

@@ -11,3 +11,8 @@ storage/
 tests/
 *.mp3
 *.wav
+
+# Security: Ignore environment secret files except example
+.env
+.env.*
+!.env.example

@@ -34,7 +34,7 @@ class WebhookService:
                 import httpx
 
                 limits = httpx.Limits(max_keepalive_connections=200, max_connections=1000)
-                cls._sync_client = httpx.Client(timeout=10.0, limits=limits)
+                cls._sync_client = httpx.Client(timeout=10.0, limits=limits, follow_redirects=False)
             except Exception as e:
                 logger.warning("httpx.Client initialize warning (%s), falling back to urllib", e)
                 return None
@@ -42,23 +42,28 @@ class WebhookService:
 
     @classmethod
     def get_async_client(cls):
-        """High-throughput async connection pooling için paylaşımlı httpx.AsyncClient."""
+        """High-throughput async connection pooling için paylaşımlı httpx.AsyncClient (follow_redirects=False)."""
         if cls._async_client is None:
             try:
                 import httpx
 
                 limits = httpx.Limits(max_keepalive_connections=200, max_connections=1000)
-                cls._async_client = httpx.AsyncClient(timeout=10.0, limits=limits)
+                cls._async_client = httpx.AsyncClient(timeout=10.0, limits=limits, follow_redirects=False)
             except Exception as e:
                 logger.warning("httpx.AsyncClient initialize warning (%s)", e)
                 return None
         return cls._async_client
 
-    def generate_signature(self, payload_bytes: bytes) -> str:
-        """Payload veri bütünlüğünü garanti etmek için HMAC-SHA256 imzası üretir."""
-        return hmac.new(
-            self.secret_key.encode("utf-8"), payload_bytes, hashlib.sha256
+    def generate_signature(self, timestamp_str: str, body_str: str) -> str:
+        """
+        Payload veri bütünlüğünü ve zaman damgasını garanti etmek için HMAC-SHA256 imzası üretir.
+        Format: sha256=HMAC(secret, f"{timestamp}.{body}")
+        """
+        signature_data = f"{timestamp_str}.{body_str}".encode("utf-8")
+        raw_hmac = hmac.new(
+            self.secret_key.encode("utf-8"), signature_data, hashlib.sha256
         ).hexdigest()
+        return f"sha256={raw_hmac}"
 
     def send_callback(
         self,
@@ -67,11 +72,12 @@ class WebhookService:
         max_retries: int = 3,
         backoff_factor: float = 1.0,
     ) -> bool:
-        """
-        Hedef callback_url adresine JSON formatında HTTP POST isteği atar.
-        Senkron çağıran fonksiyonları asenkron httpx keep-alive havuz metoduna bağlar.
-        """
         if not callback_url:
+            return False
+
+        from audio_analyzer.utils.ssrf_validator import validate_callback_url
+        if not validate_callback_url(callback_url):
+            logger.warning("Webhook gönderimi SSRF engeline takıldı (%s)", callback_url)
             return False
 
         import asyncio
@@ -98,25 +104,30 @@ class WebhookService:
         max_retries: int = 3,
         backoff_factor: float = 1.0,
     ) -> bool:
-        """
-        Yüksek eşzamanlılık (4k-5k req/sec) için asenkron non-blocking HTTP POST webhook callback gönderici.
-        """
         if not callback_url:
             return False
 
+        from audio_analyzer.utils.ssrf_validator import validate_callback_url
+        if not validate_callback_url(callback_url):
+            logger.warning("Async Webhook gönderimi SSRF engeline takıldı (%s)", callback_url)
+            return False
+
         import asyncio
-        payload_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        signature = self.generate_signature(payload_bytes)
+        timestamp_str = str(int(time.time()))
+        body_str = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        payload_bytes = body_str.encode("utf-8")
+        signature = self.generate_signature(timestamp_str, body_str)
 
         headers = {
             "Content-Type": "application/json; charset=utf-8",
-            "User-Agent": "Antigravity-Audio-Analyzer-Webhook/1.0",
+            "User-Agent": "AudioAnalyzer-Webhook/1.0",
+            "X-Timestamp": timestamp_str,
             "X-Signature": signature,
         }
 
         client = self.get_async_client()
         if client is None:
-            return self.send_callback(callback_url, payload, max_retries, backoff_factor)
+            return False
 
         for attempt in range(1, max_retries + 1):
             try:

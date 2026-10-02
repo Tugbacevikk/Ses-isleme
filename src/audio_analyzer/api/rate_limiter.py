@@ -26,14 +26,12 @@ class RedisRateLimiter:
     async def check_rate_limit(self, request: Request):
         rpm = int(os.getenv("RATE_LIMIT_PER_MINUTE", "6000"))
 
-        # 1. Anahtar Seçimi: API key -> Tenant ID -> Client IP
+        import hashlib
         api_key = request.headers.get("X-API-Key") if request and hasattr(request, "headers") else None
-        tenant_id = request.headers.get("X-Tenant-ID") if request and hasattr(request, "headers") else None
 
-        if api_key:
-            identifier = f"key:{api_key}"
-        elif tenant_id:
-            identifier = f"tenant:{tenant_id}"
+        if api_key and api_key.strip():
+            key_hash = hashlib.sha256(api_key.strip().encode("utf-8")).hexdigest()[:16]
+            identifier = f"key_hash:{key_hash}"
         else:
             ip = request.client.host if (request and hasattr(request, "client") and request.client) else "127.0.0.1"
             identifier = f"ip:{ip}"

@@ -15,12 +15,12 @@ class Settings:
 
     # 1. API & Güvenlik
     api_key: str = field(default_factory=lambda: os.getenv("API_KEY", ""))
-    webhook_secret: str = field(default_factory=lambda: os.getenv("WEBHOOK_SECRET", "my_webhook_secret_key_67890"))
+    webhook_secret: str = field(default_factory=lambda: os.getenv("WEBHOOK_SECRET", ""))
 
     # 2. Veritabanı & Depolama
     database_url: str = field(
         default_factory=lambda: os.getenv(
-            "DATABASE_URL", "postgresql://postgres:postgres_secure_pass_2026@localhost:5432/audio_db"
+            "DATABASE_URL", "postgresql://postgres@localhost:5432/audio_db"
         )
     )
     allow_sqlite_fallback: bool = field(

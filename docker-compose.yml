@@ -10,11 +10,12 @@ services:
     image: audio_analyzer_web:latest
     container_name: audio_analyzer_web
     restart: always
+    env_file: .env
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/audio_db
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/audio_db}
+      - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASSWORD:-redis_secure_pass_2026}@redis:6379/0}
       - USE_REDIS_STREAM=true
       - STORAGE_TYPE=disk
       - STORAGE_DIR=/app/storage/raw
@@ -38,9 +39,10 @@ services:
     container_name: audio_analyzer_stream_worker
     restart: always
     command: python -m audio_analyzer.workers.stream_worker
+    env_file: .env
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/audio_db
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/audio_db}
+      - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASSWORD:-redis_secure_pass_2026}@redis:6379/0}
       - STORAGE_TYPE=disk
       - STORAGE_DIR=/app/storage/raw
       - WHISPER_MODEL_SIZE=medium
@@ -66,9 +68,9 @@ services:
     container_name: audio_analyzer_webhook_worker
     restart: always
     command: python -m audio_analyzer.workers.webhook_worker
+    env_file: .env
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/audio_db
-      - WEBHOOK_SECRET=my_webhook_secret_key_67890
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/audio_db}
     depends_on:
       db:
         condition: service_healthy
@@ -82,9 +84,10 @@ services:
     container_name: audio_analyzer_sweeper
     restart: always
     command: python -m audio_analyzer.workers.sweeper
+    env_file: .env
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/audio_db
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/audio_db}
+      - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASSWORD:-redis_secure_pass_2026}@redis:6379/0}
       - STORAGE_TYPE=disk
       - STORAGE_DIR=/app/storage/raw
       - PENDING_STALE_SEC=300
@@ -105,29 +108,27 @@ services:
       dockerfile: Dockerfile
     container_name: audio_analyzer_migrate
     command: alembic upgrade head
+    env_file: .env
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/audio_db
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/audio_db}
     depends_on:
       db:
         condition: service_healthy
-
 
   # 3. PostgreSQL Veritabanı
   db:
     image: postgres:16-alpine
     container_name: audio_analyzer_db
     restart: always
+    env_file: .env
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=audio_db
-      - POSTGRES_HOST_AUTH_METHOD=trust
-    ports:
-      - "5432:5432"
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-audio_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d audio_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-audio_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -137,12 +138,13 @@ services:
     image: edoburu/pgbouncer:latest
     container_name: audio_analyzer_pgbouncer
     restart: always
+    env_file: .env
     environment:
       - DB_HOST=db
       - DB_PORT=5432
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_NAME=audio_db
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_NAME=${POSTGRES_DB:-audio_db}
       - AUTH_TYPE=md5
       - POOL_MODE=transaction
       - MAX_CLIENT_CONN=1000
@@ -160,8 +162,8 @@ services:
     image: redis:7-alpine
     container_name: audio_analyzer_redis
     restart: always
-    ports:
-      - "6379:6379"
+    env_file: .env
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_secure_pass_2026}
 
 volumes:
   postgres_data:
