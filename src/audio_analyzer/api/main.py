@@ -28,6 +28,8 @@ logging.basicConfig(
 logging.getLogger("speechbrain").setLevel(logging.ERROR)
 logging.getLogger("speechbrain.utils.fetching").setLevel(logging.ERROR)
 logging.getLogger("speechbrain.utils.parameter_transfer").setLevel(logging.ERROR)
+
+logger = logging.getLogger("audio_analyzer.api.main")
 def get_cors_config(allowed_origins_raw: Optional[str] = None) -> Tuple[List[str], bool]:
     if allowed_origins_raw is None:
         allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "")

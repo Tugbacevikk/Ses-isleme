@@ -11,7 +11,8 @@ def test_webhook_signature_generation():
     payload_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     sig = service.generate_signature(payload_bytes)
     assert isinstance(sig, str)
-    assert len(sig) == 64  # SHA256 hex string length
+    assert sig.startswith("sha256=")
+    assert len(sig) == 71  # "sha256=" (7) + SHA256 hex (64) = 71
 
 
 @pytest.mark.unit

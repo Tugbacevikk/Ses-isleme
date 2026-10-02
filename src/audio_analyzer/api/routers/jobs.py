@@ -34,10 +34,9 @@ async def verify_api_key(api_key: Optional[str] = Depends(api_key_header)):
     """
     İsteğin X-API-Key başlığını doğrular. Ortam değişkeninde API_KEY tanımlıysa kontrol eder.
     Tanımlı değilse APP_ENV=development haricinde erişimi engeller.
-    Timing-attack saldırılarını önlemek için secrets.compare_digest kullanılır.
     """
     expected_api_key = os.getenv("API_KEY", "").strip()
-    app_env = os.getenv("APP_ENV", os.getenv("ENV", "production")).lower()
+    app_env = os.getenv("APP_ENV", os.getenv("ENV", "development")).lower()
 
     if expected_api_key:
         if not api_key or not secrets.compare_digest(api_key, expected_api_key):
