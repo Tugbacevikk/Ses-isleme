@@ -19,7 +19,9 @@ class SemanticRefiner:
         ollama_url: Optional[str] = None,
         model_name: Optional[str] = None,
         custom_triggers: Optional[Dict[str, List[str]]] = None,
+        split_on_questions: Optional[bool] = None,
     ):
+        import os
         from audio_analyzer.config import get_settings
 
         settings = get_settings()
@@ -27,6 +29,11 @@ class SemanticRefiner:
         self.use_llm = use_llm if use_llm is not None else settings.use_llm
         self.ollama_url = ollama_url or settings.ollama_url
         self.model_name = model_name or settings.ollama_model
+        self.split_on_questions = (
+            split_on_questions
+            if split_on_questions is not None
+            else (os.getenv("SPLIT_ON_QUESTIONS", "false").lower() == "true")
+        )
 
         # Varsayılan genel amaçlı modda alan tetikleyicileri boştur (domain-agnostic).
         self.agent_triggers: List[str] = []
@@ -138,6 +145,9 @@ class SemanticRefiner:
         soru-cevap ve diyalog cümlelerini ('?' işareti ve takip eden cümleler)
         alternatif konuşmacılara (SPEAKER_00 / SPEAKER_01) böler.
         """
+        if not self.split_on_questions:
+            return [utt]
+
         import re
 
         text = utt.text.strip()
@@ -401,23 +411,15 @@ class SemanticRefiner:
                 if not curr_text or not nxt_text:
                     break
 
-                # 1. Aynı konuşmacı ise ve aralık MAX_SILENCE_THRESHOLD'dan küçükse birleştir
+                # Birleştirme yalnızca aynı konuşmacı (nxt.speaker_id == curr.speaker_id) ise yapılır
                 is_same_speaker = (gap <= max_silence_threshold and nxt.speaker_id == curr.speaker_id)
 
-                # 2. Türkçe harf kontrolü (Büyük harfle başlamıyorsa: küçük harf, rakam veya sembol)
-                nxt_not_upper = not nxt_text[0].isupper()
-
-                # 3. Noktalanmamış parçalanma (ÜST SINIR: gap <= max_clause_gap)
                 curr_is_unpunctuated = not curr_text.endswith((".", "?", "!", ":", ";", "…"))
-
-                # Jitter düzeltmesi (gap <= 0.05s) yalnızca çok kısa kelimelerde (<3 kelime) geçerlidir,
-                # böylece hızlı söz almalar ("hı hı", "evet") yutulmaz.
-                is_micro_jitter = (gap <= 0.05 and len(curr_text.split()) <= 3)
 
                 is_clause_split = (
                     gap <= max_clause_gap
                     and curr_is_unpunctuated
-                    and (is_micro_jitter or nxt_not_upper or nxt.speaker_id == curr.speaker_id)
+                    and nxt.speaker_id == curr.speaker_id
                 )
 
                 if is_same_speaker or is_clause_split:

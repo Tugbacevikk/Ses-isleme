@@ -44,7 +44,7 @@ def test_semantic_refiner_domain_mode_greeting_lock_scope():
 
 
 def test_semantic_refiner_splits_dialogue_question_turns():
-    refiner = SemanticRefiner()
+    refiner = SemanticRefiner(split_on_questions=True)
     utt = TranscriptUtterance(
         id=uuid.uuid4(),
         speaker_id="SPEAKER_00",

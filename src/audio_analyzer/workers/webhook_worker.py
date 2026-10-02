@@ -32,7 +32,7 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from audio_analyzer.api.dependencies import create_async_db_engine, get_uow_with_engine
+from audio_analyzer.api.dependencies import get_uow_with_engine, init_engine
 
 load_dotenv()
 logger = logging.getLogger("webhook_worker")
@@ -139,7 +139,7 @@ async def run_webhook_worker_loop(poll_interval: float = 2.0):
     host_concurrency = int(os.getenv("WEBHOOK_HOST_CONCURRENCY", "5"))
     secret = settings.webhook_secret
 
-    engine = create_async_db_engine()
+    engine = init_engine()
 
     stop_event = asyncio.Event()
 
