@@ -157,29 +157,32 @@ class SpeechBrainECAPADiarizer(IDiarizer):
             else:
                 from sklearn.cluster import AgglomerativeClustering
 
-                if self.num_speakers is not None:
-                    n_spk = min(self.num_speakers, len(unit_embs))
-                    if n_spk <= 1:
-                        raw_valid_labels = np.zeros(len(unit_embs), dtype=int)
-                    else:
-                        model = AgglomerativeClustering(
-                            n_clusters=n_spk, metric="cosine", linkage="average"
-                        )
-                        raw_valid_labels = model.fit_predict(unit_embs)
+            target_spk_env = os.getenv("TARGET_NUM_SPEAKERS", os.getenv("NUM_SPEAKERS"))
+            effective_num_speakers = self.num_speakers or (int(target_spk_env) if target_spk_env and target_spk_env.isdigit() and int(target_spk_env) > 0 else None)
+
+            if effective_num_speakers is not None:
+                n_spk = min(effective_num_speakers, len(unit_embs))
+                if n_spk <= 1:
+                    raw_valid_labels = np.zeros(len(unit_embs), dtype=int)
                 else:
                     model = AgglomerativeClustering(
-                        n_clusters=None,
-                        metric="cosine",
-                        linkage="average",
-                        distance_threshold=dist_thresh,
+                        n_clusters=n_spk, metric="cosine", linkage="average"
                     )
                     raw_valid_labels = model.fit_predict(unit_embs)
-                    n_clusters = len(np.unique(raw_valid_labels))
-                    if n_clusters > self.max_speakers:
-                        model_cap = AgglomerativeClustering(
-                            n_clusters=self.max_speakers, metric="cosine", linkage="average"
-                        )
-                        raw_valid_labels = model_cap.fit_predict(unit_embs)
+            else:
+                model = AgglomerativeClustering(
+                    n_clusters=None,
+                    metric="cosine",
+                    linkage="average",
+                    distance_threshold=dist_thresh,
+                )
+                raw_valid_labels = model.fit_predict(unit_embs)
+                n_clusters = len(np.unique(raw_valid_labels))
+                if n_clusters > self.max_speakers:
+                    model_cap = AgglomerativeClustering(
+                        n_clusters=self.max_speakers, metric="cosine", linkage="average"
+                    )
+                    raw_valid_labels = model_cap.fit_predict(unit_embs)
 
             # Map valid labels back to all windows
             raw_labels = np.zeros(num_wins, dtype=int)
@@ -191,9 +194,7 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                     val_idx += 1
                 raw_labels[i] = last_lbl
 
-            k_size = min(9, len(raw_labels))
-            if k_size % 2 == 0:
-                k_size = max(1, k_size - 1)
+            k_size = 3 if len(raw_labels) >= 3 else 1
             final_labels = (
                 medfilt(raw_labels, kernel_size=k_size) if len(raw_labels) > 0 else raw_labels
             )

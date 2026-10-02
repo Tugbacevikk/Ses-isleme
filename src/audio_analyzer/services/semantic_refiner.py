@@ -112,9 +112,15 @@ class SemanticRefiner:
         for utt in utterances:
             if self.agent_triggers or self.customer_triggers:
                 split_result = self._split_if_role_transition(utt)
-                refined.extend(split_result)
             else:
-                refined.append(utt)
+                split_result = [utt]
+
+            # Soru işareti sonrası diyalog ve konuşmacı dönüşümlerini ayrıştır
+            dialogue_split: List[TranscriptUtterance] = []
+            for item in split_result:
+                dialogue_split.extend(self._split_dialogue_turns(item))
+
+            refined.extend(dialogue_split)
 
         # 3. Yalnızca çağrı merkezi (call_center) modunda açılış selamlamasını kitle (Role Anchoring)
         if self.domain_mode == "call_center":
@@ -123,6 +129,73 @@ class SemanticRefiner:
             anchored_utterances = refined
 
         return self._normalize_short_gaps(anchored_utterances)
+
+    def _split_dialogue_turns(
+        self, utt: TranscriptUtterance
+    ) -> List[TranscriptUtterance]:
+        """
+        Diyalog kiti: Tek bir konuşmacı kartına birleştirilmiş olan
+        soru-cevap ve diyalog cümlelerini ('?' işareti ve takip eden cümleler)
+        alternatif konuşmacılara (SPEAKER_00 / SPEAKER_01) böler.
+        """
+        import re
+
+        text = utt.text.strip()
+        if not text or "?" not in text:
+            return [utt]
+
+        # '?' karakterinden sonra metin var mı kontrol et
+        parts = re.split(r'(\?+)', text)
+        if len(parts) <= 2:
+            return [utt]
+
+        segments: List[str] = []
+        i = 0
+        while i < len(parts):
+            seg_text = parts[i].strip()
+            if not seg_text:
+                i += 1
+                continue
+            if i + 1 < len(parts) and parts[i + 1].startswith("?"):
+                seg_text += "?"
+                i += 2
+            else:
+                i += 1
+            if seg_text:
+                segments.append(seg_text)
+
+        if len(segments) <= 1:
+            return [utt]
+
+        total_chars = max(len(text), 1)
+        total_duration = utt.end_time - utt.start_time
+
+        result: List[TranscriptUtterance] = []
+        current_time = utt.start_time
+
+        spk_0 = utt.speaker_id
+        spk_1 = "SPEAKER_01" if spk_0 == "SPEAKER_00" else "SPEAKER_00"
+
+        for idx, seg in enumerate(segments):
+            seg_duration = (len(seg) / total_chars) * total_duration
+            seg_end = round(current_time + seg_duration, 2)
+            if idx == len(segments) - 1:
+                seg_end = utt.end_time
+
+            seg_spk = spk_0 if (idx % 2 == 0) else spk_1
+
+            result.append(
+                TranscriptUtterance(
+                    id=uuid.uuid4(),
+                    speaker_id=seg_spk,
+                    start_time=round(current_time, 2),
+                    end_time=seg_end,
+                    text=seg,
+                )
+            )
+            current_time = seg_end
+
+        return result
 
     def _clean_repetitive_text(self, text: str) -> str:
         """
