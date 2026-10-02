@@ -31,6 +31,12 @@ class Settings:
     memory_storage_max_bytes: int = field(
         default_factory=lambda: int(os.getenv("MEMORY_STORAGE_MAX_BYTES", "536870912"))
     )
+    audio_retention_hours: int = field(
+        default_factory=lambda: int(os.getenv("AUDIO_RETENTION_HOURS", "24"))
+    )
+    result_retention_days: int = field(
+        default_factory=lambda: int(os.getenv("RESULT_RETENTION_DAYS", "30"))
+    )
 
     # 3. Mesajlaşma & Kuyruk
     use_redis_stream: bool = field(
