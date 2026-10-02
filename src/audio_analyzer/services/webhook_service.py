@@ -21,11 +21,10 @@ class WebhookService:
     _async_client = None
 
     def __init__(self, secret_key: Optional[str] = None):
-        import os
+        from audio_analyzer.config import get_settings
 
-        self.secret_key = secret_key or os.getenv(
-            "WEBHOOK_SECRET", "default_antigravity_secret_key"
-        )
+        settings = get_settings()
+        self.secret_key = secret_key or settings.webhook_secret
 
     @classmethod
     def get_sync_client(cls):

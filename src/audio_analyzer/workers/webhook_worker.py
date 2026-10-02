@@ -131,10 +131,13 @@ async def run_webhook_worker_loop(poll_interval: float = 2.0):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] (WebhookWorker) %(message)s")
     logger.info("Webhook Outbox Worker başlatıldı.")
 
+    from audio_analyzer.config import get_settings
+
+    settings = get_settings()
     max_attempts = int(os.getenv("WEBHOOK_MAX_ATTEMPTS", "5"))
     timeout_sec = float(os.getenv("WEBHOOK_TIMEOUT_SEC", "5.0"))
     host_concurrency = int(os.getenv("WEBHOOK_HOST_CONCURRENCY", "5"))
-    secret = os.getenv("WEBHOOK_SECRET")
+    secret = settings.webhook_secret
 
     engine = create_async_db_engine()
 
