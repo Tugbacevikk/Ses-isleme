@@ -24,9 +24,9 @@ class SemanticRefiner:
 
         domain_mode = domain_mode or os.getenv("DOMAIN_MODE")
         self.domain_mode = domain_mode
-        self.use_llm = use_llm
-        self.ollama_url = ollama_url
-        self.model_name = model_name
+        self.use_llm = use_llm or (os.getenv("USE_LLM", "false").lower() == "true")
+        self.ollama_url = os.getenv("OLLAMA_URL", ollama_url)
+        self.model_name = os.getenv("OLLAMA_MODEL", model_name)
 
         # Varsayılan genel amaçlı modda alan tetikleyicileri boştur (domain-agnostic).
         self.agent_triggers: List[str] = []
