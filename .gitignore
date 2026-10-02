@@ -54,3 +54,5 @@ experimental/native/target/
 .DS_Store
 Thumbs.db
 
+.github/
+
