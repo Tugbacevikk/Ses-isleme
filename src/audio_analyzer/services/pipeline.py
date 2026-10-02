@@ -145,9 +145,8 @@ class AudioAnalysisPipeline:
                 except Exception as e:
                     logger.warning("VAD İşleme Hatası: %s. VAD filtresi atlanıyor.", e)
 
-            # 4 & 5. STT ve Diarization Motorlarını Çalıştır
-            worker_threads = int(os.getenv("WORKER_CPU_THREADS", "0"))
-            run_sequentially = (profile == "feedback") or (worker_threads > 0)
+            # 4 & 5. STT ve Diarization Motorlarını Çalıştır (Varsayılan olarak paralel ThreadPool)
+            run_sequentially = (os.getenv("RUN_PIPELINE_SEQUENTIALLY", "false").lower() == "true")
 
             if run_sequentially:
                 words, detected_language = self.stt_engine.transcribe(working_path)
@@ -250,9 +249,8 @@ class AudioAnalysisPipeline:
             except Exception as e:
                 logger.warning("VAD In-Memory İşleme Hatası: %s. VAD filtresi atlanıyor.", e)
 
-        # 4 & 5. STT ve Diarization Motorlarını Çalıştır
-        worker_threads = int(os.getenv("WORKER_CPU_THREADS", "0"))
-        run_sequentially = (profile == "feedback") or (worker_threads > 0)
+        # 4 & 5. STT ve Diarization Motorlarını Çalıştır (Varsayılan olarak paralel ThreadPool)
+        run_sequentially = (os.getenv("RUN_PIPELINE_SEQUENTIALLY", "false").lower() == "true")
 
         if run_sequentially:
             words, detected_language = self.stt_engine.transcribe(audio_array)
