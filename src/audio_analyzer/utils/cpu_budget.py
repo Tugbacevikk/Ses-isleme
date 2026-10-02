@@ -26,10 +26,9 @@ def setup_cpu_thread_budget(threads: int | None = None) -> int:
                 threads = None
 
     if threads is None or threads <= 0:
-        cpu_cnt = os.cpu_count() or 4
-        threads = min(4, max(1, cpu_cnt))
+        threads = 4
 
-    threads = min(4, max(1, threads))
+    threads = max(1, threads)
 
     threads_str = str(threads)
     os.environ["WORKER_CPU_THREADS"] = threads_str

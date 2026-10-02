@@ -2,13 +2,23 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
-try:
-    import torch
-
-    HAS_TORCH = True
-except ImportError:
-    HAS_TORCH = False
 from pydantic import BaseModel, Field
+
+
+def _detect_device() -> str:
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return "cuda"
+    except Exception:
+        pass
+    return "cpu"
+
+
+def _detect_compute_type() -> str:
+    if _detect_device() == "cuda":
+        return "float16"
+    return "int8"
 
 
 class JobStatus(str, Enum):
@@ -26,12 +36,8 @@ class DeviceConfig(BaseModel):
     GPU varsa CUDA + float16, yoksa CPU + int8 modunu seçer.
     """
 
-    device: str = Field(
-        default_factory=lambda: "cuda" if (HAS_TORCH and torch.cuda.is_available()) else "cpu"
-    )
-    compute_type: str = Field(
-        default_factory=lambda: "float16" if (HAS_TORCH and torch.cuda.is_available()) else "int8"
-    )
+    device: str = Field(default_factory=_detect_device)
+    compute_type: str = Field(default_factory=_detect_compute_type)
     device_index: int = 0  # Çoklu GPU kartı seçimi için (0, 1, 2...)
 
 

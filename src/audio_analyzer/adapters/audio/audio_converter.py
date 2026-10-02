@@ -88,25 +88,25 @@ class AudioConverterProcessor(IAudioProcessor):
     def _convert_with_pyav(self, input_p: Path, output_p: Path, target_sample_rate: int) -> str:
         import av
 
-        container = av.open(str(input_p))
-        audio_stream = next(s for s in container.streams if s.type == "audio")
+        with av.open(str(input_p)) as container:
+            audio_stream = next(s for s in container.streams if s.type == "audio")
 
-        resampler = av.AudioResampler(format="s16", layout="mono", rate=target_sample_rate)
-        all_pcm_bytes = bytearray()
+            resampler = av.AudioResampler(format="s16", layout="mono", rate=target_sample_rate)
+            all_pcm_bytes = bytearray()
 
-        for frame in container.decode(audio_stream):
-            resampled_frames = resampler.resample(frame)
-            for r_frame in resampled_frames:
+            for frame in container.decode(audio_stream):
+                resampled_frames = resampler.resample(frame)
+                for r_frame in resampled_frames:
+                    all_pcm_bytes.extend(r_frame.to_ndarray().tobytes())
+
+            for r_frame in resampler.resample(None):
                 all_pcm_bytes.extend(r_frame.to_ndarray().tobytes())
 
-        for r_frame in resampler.resample(None):
-            all_pcm_bytes.extend(r_frame.to_ndarray().tobytes())
-
-        with wave.open(str(output_p), "wb") as wav_file:
-            wav_file.setnchannels(1)
-            wav_file.setsampwidth(2)
-            wav_file.setframerate(target_sample_rate)
-            wav_file.writeframes(all_pcm_bytes)
+            with wave.open(str(output_p), "wb") as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(target_sample_rate)
+                wav_file.writeframes(all_pcm_bytes)
 
         return str(output_p)
 
@@ -143,24 +143,24 @@ class AudioConverterProcessor(IAudioProcessor):
         import av
         import numpy as np
 
-        container = av.open(io.BytesIO(file_bytes))
-        audio_stream = next(s for s in container.streams if s.type == "audio")
+        with av.open(io.BytesIO(file_bytes)) as container:
+            audio_stream = next(s for s in container.streams if s.type == "audio")
 
-        resampler = av.AudioResampler(format="flt", layout="mono", rate=target_sample_rate)
-        samples_list = []
+            resampler = av.AudioResampler(format="flt", layout="mono", rate=target_sample_rate)
+            samples_list = []
 
-        for frame in container.decode(audio_stream):
-            resampled_frames = resampler.resample(frame)
-            for r_frame in resampled_frames:
+            for frame in container.decode(audio_stream):
+                resampled_frames = resampler.resample(frame)
+                for r_frame in resampled_frames:
+                    samples_list.append(r_frame.to_ndarray().flatten())
+
+            for r_frame in resampler.resample(None):
                 samples_list.append(r_frame.to_ndarray().flatten())
 
-        for r_frame in resampler.resample(None):
-            samples_list.append(r_frame.to_ndarray().flatten())
-
-        if samples_list:
-            full_data = np.concatenate(samples_list)
-        else:
-            full_data = np.array([], dtype=np.float32)
+            if samples_list:
+                full_data = np.concatenate(samples_list)
+            else:
+                full_data = np.array([], dtype=np.float32)
 
         return full_data, target_sample_rate
 

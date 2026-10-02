@@ -221,9 +221,10 @@ async def start_worker_main():
         except NotImplementedError:
             pass  # Windows signals
 
-    await worker.run()
+def main():
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(start_worker_main())
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    asyncio.run(start_worker_main())
+    main()

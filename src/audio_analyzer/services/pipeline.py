@@ -256,6 +256,12 @@ class AudioAnalysisPipeline:
             else:
                 diarization_segments = []
         else:
+            total_worker_threads = int(os.getenv("WORKER_CPU_THREADS", "4"))
+            stt_threads = max(1, total_worker_threads // 2)
+            diar_threads = max(1, total_worker_threads - stt_threads)
+            os.environ["WHISPER_CPU_THREADS"] = str(stt_threads)
+            os.environ["OMP_NUM_THREADS"] = str(diar_threads)
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 t0_stt = time.monotonic()
                 future_stt = executor.submit(self.stt_engine.transcribe, audio_input)

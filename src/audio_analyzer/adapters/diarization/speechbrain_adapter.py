@@ -87,6 +87,9 @@ class SpeechBrainECAPADiarizer(IDiarizer):
             self._load_classifier()
             from scipy.signal import medfilt
 
+            from audio_analyzer.config import get_settings
+            settings = get_settings()
+
             if isinstance(audio_input, np.ndarray):
                 data = audio_input
                 sr = 16000
@@ -97,8 +100,12 @@ class SpeechBrainECAPADiarizer(IDiarizer):
 
             target_sr = 16000
             if sr != target_sr:
-                data_list = self.audio_processor.fast_resample(data.tolist(), sr)
-                data = np.array(data_list, dtype=np.float32)
+                from math import gcd
+                import scipy.signal
+                g = gcd(int(sr), target_sr)
+                up = target_sr // g
+                down = int(sr) // g
+                data = scipy.signal.resample_poly(data, up, down).astype(np.float32)
                 sr = target_sr
 
             win_sec = 1.2

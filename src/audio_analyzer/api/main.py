@@ -86,12 +86,14 @@ async def lifespan(app: FastAPI):
         else:
             logger.error("PostgreSQL bağlantı hatası: %s", db_err)
 
-    try:
-        from audio_analyzer.services.pipeline_factory import get_shared_pipeline
+    use_redis_stream = os.getenv("USE_REDIS_STREAM", "false").lower() == "true"
+    if not use_redis_stream:
+        try:
+            from audio_analyzer.services.pipeline_factory import get_shared_pipeline
 
-        get_shared_pipeline()
-    except Exception as e:
-        logger.warning("Model ön yükleme uyarısı: %s", e)
+            get_shared_pipeline()
+        except Exception as e:
+            logger.warning("Model ön yükleme uyarısı: %s", e)
 
     yield
 
@@ -190,6 +192,7 @@ async def readiness_check():
     db_ok = False
     redis_ok = False
     model_ok = False
+    use_redis_stream = os.getenv("USE_REDIS_STREAM", "false").lower() == "true"
 
     # 1. DB Kontrolü
     try:
@@ -217,16 +220,17 @@ async def readiness_check():
     except Exception as ex:
         logger.warning("Readiness Redis kontrol uyarısı: %s", ex)
 
-    # 3. Model Yüklü Kontrolü
+    # 3. Model Yüklü Kontrolü (Senkron yükleme yapmadan kontrol eder)
     try:
-        from audio_analyzer.services.pipeline_factory import get_shared_pipeline
+        from audio_analyzer.services import pipeline_factory
 
-        pipe = get_shared_pipeline()
-        model_ok = pipe.stt_engine is not None and getattr(pipe.stt_engine, "_model", None) is not None
+        if pipeline_factory._cached_pipeline is not None:
+            pipe = pipeline_factory._cached_pipeline
+            model_ok = pipe.stt_engine is not None and getattr(pipe.stt_engine, "_model", None) is not None
     except Exception as ex:
         logger.warning("Readiness Model kontrol uyarısı: %s", ex)
 
-    is_ready = db_ok and redis_ok
+    is_ready = db_ok and (redis_ok if use_redis_stream else True)
     status_code = 200 if is_ready else 503
 
     return Response(

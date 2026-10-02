@@ -19,7 +19,7 @@ services:
       - USE_REDIS_STREAM=true
       - STORAGE_TYPE=disk
       - STORAGE_DIR=/app/storage/raw
-      - WHISPER_MODEL_SIZE=medium
+      - WHISPER_MODEL_SIZE=small
       - WORKER_CPU_THREADS=4
       - HF_HOME=/app/storage/cache
     volumes:
@@ -29,6 +29,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
 
   # 2. Redis Stream Worker (Yüksek Performanslı Tüketici Grubu Worker)
   stream_worker:
@@ -36,7 +38,6 @@ services:
       context: .
       dockerfile: Dockerfile
     image: audio_analyzer_stream_worker:latest
-    container_name: audio_analyzer_stream_worker
     restart: always
     command: python -m audio_analyzer.workers.stream_worker
     env_file: .env
@@ -45,10 +46,10 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASSWORD:-redis_secure_pass_2026}@redis:6379/0}
       - STORAGE_TYPE=disk
       - STORAGE_DIR=/app/storage/raw
-      - WHISPER_MODEL_SIZE=medium
+      - WHISPER_MODEL_SIZE=small
       - WORKER_CPU_THREADS=4
       - HF_HOME=/app/storage/cache
-      - USE_LLM=true
+      - USE_LLM=false
       - OLLAMA_URL=http://host.docker.internal:11434/api/generate
       - OLLAMA_MODEL=llama3.2
     volumes:
@@ -58,8 +59,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
 
-  # 2b. Webhook Worker (Transactional Outbox Bildirim Servisi)
+  # 3. Webhook Worker (Transactional Outbox Bildirim Servisi)
   webhook_worker:
     build:
       context: .
@@ -74,8 +77,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
-  # 2c. Sweeper Servisi (Yetim ve Askıda Kalan İşleri Toparlayıcı)
+  # 4. Sweeper Servisi (Yetim ve Askıda Kalan İşleri Toparlayıcı)
   sweeper:
     build:
       context: .
@@ -100,8 +105,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
 
-  # 2c. Tek Seferlik Veritabanı Migration Servisi
+  # 5. Tek Seferlik Veritabanı Migration Servisi
   migrate:
     build:
       context: .
@@ -115,7 +122,7 @@ services:
       db:
         condition: service_healthy
 
-  # 3. PostgreSQL Veritabanı
+  # 6. PostgreSQL Veritabanı
   db:
     image: postgres:16-alpine
     container_name: audio_analyzer_db
@@ -133,31 +140,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # 3b. PgBouncer (PostgreSQL Bağlantı Havuzlayıcı - Connection Pooler)
-  pgbouncer:
-    image: edoburu/pgbouncer:latest
-    container_name: audio_analyzer_pgbouncer
-    restart: always
-    env_file: .env
-    environment:
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_USER=${POSTGRES_USER:-postgres}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_NAME=${POSTGRES_DB:-audio_db}
-      - AUTH_TYPE=md5
-      - POOL_MODE=transaction
-      - MAX_CLIENT_CONN=1000
-      - DEFAULT_POOL_SIZE=20
-      - MIN_POOL_SIZE=5
-      - LISTEN_PORT=6432
-    ports:
-      - "6432:6432"
-    depends_on:
-      db:
-        condition: service_healthy
-
-  # 4. Redis Mesaj Brokerı & Önbellek
+  # 7. Redis Mesaj Brokerı & Önbellek
   redis:
     image: redis:7-alpine
     container_name: audio_analyzer_redis

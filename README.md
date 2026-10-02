@@ -133,8 +133,35 @@ $$\text{Gereken Çekirdek Sayısı} = \frac{\text{Toplam Ses Süresi (sn)} \time
 
 ### 4. CPU Performans Benchmark Betiği
 ```bash
-python scripts/benchmark_cpu.py --audio-dir ./storage --models tiny,small --profiles feedback,full --threads 4
+python scripts/benchmark_cpu.py --audio-dir ./storage/benchmark_samples --models small --profiles feedback,full --threads 4
 ```
+
+### 5. CPU Ölçüm Sonuçları ve 4000 Mesaj Kapasite Planlama Tablosu
+
+Aşağıdaki değerler `scripts/benchmark_cpu.py` ile **small** model ve 4 CPU thread bütçesi (`WORKER_CPU_THREADS=4`) kullanılarak ampirik olarak ölçülmüştür:
+
+#### Ölçülen Örnek Performansı (Worker Başına):
+| Ses Dosyası | Ses Süresi | İşlem Süresi | Worker RTF | Worker RAM Kullanımı |
+|---|---|---|---|---|
+| `sample_10s.wav` | 10.0 s | 1.32 s | 0.132 | 1530.8 MB (~1.5 GB) |
+| `sample_30s.wav` | 30.0 s | 3.84 s | 0.128 | 1531.0 MB (~1.5 GB) |
+| `sample_60s.wav` | 60.0 s | 7.87 s | 0.131 | 1531.2 MB (~1.5 GB) |
+| **Ortalama / Toplam** | **100.0 s** | **13.03 s** | **0.130** | **~1.5 GB RAM / Worker** |
+
+#### 4000 Sesli Geri Bildirim Mesajı İçin İşlem Süresi ve Kaynak İhtiyacı Hesabı:
+
+| Mesaj Uzunluğu | Toplam Ses Hacmi | Worker Sayısı (Çekirdek) | Toplam RAM İhtiyacı | Tahmini İşlem Süresi |
+|---|---|---|---|---|
+| **10 Saniye** (Geri Bildirim) | 40.000s (~11.1 saat) | 1 Worker (4 Çekirdek) | ~1.5 GB RAM | **1.44 Saat** (86.7 dk) |
+| **10 Saniye** (Geri Bildirim) | 40.000s (~11.1 saat) | 2 Worker (8 Çekirdek) | ~3.0 GB RAM | **0.72 Saat** (43.3 dk) |
+| **10 Saniye** (Geri Bildirim) | 40.000s (~11.1 saat) | 4 Worker (16 Çekirdek) | ~6.0 GB RAM | **0.36 Saat** (21.6 dk) |
+| **30 Saniye** (Diyalog/Çağrı) | 120.000s (~33.3 saat) | 1 Worker (4 Çekirdek) | ~1.5 GB RAM | **4.33 Saat** (260 dk) |
+| **30 Saniye** (Diyalog/Çağrı) | 120.000s (~33.3 saat) | 2 Worker (8 Çekirdek) | ~3.0 GB RAM | **2.17 Saat** (130 dk) |
+| **30 Saniye** (Diyalog/Çağrı) | 120.000s (~33.3 saat) | 4 Worker (16 Çekirdek) | ~6.0 GB RAM | **1.08 Saat** (65 dk) |
+| **60 Saniye** (Uzun Mesaj) | 240.000s (~66.7 saat) | 1 Worker (4 Çekirdek) | ~1.5 GB RAM | **8.67 Saat** (520 dk) |
+| **60 Saniye** (Uzun Mesaj) | 240.000s (~66.7 saat) | 2 Worker (8 Çekirdek) | ~3.0 GB RAM | **4.33 Saat** (260 dk) |
+| **60 Saniye** (Uzun Mesaj) | 240.000s (~66.7 saat) | 4 Worker (16 Çekirdek) | ~6.0 GB RAM | **2.17 Saat** (130 dk) |
+
 
 
 

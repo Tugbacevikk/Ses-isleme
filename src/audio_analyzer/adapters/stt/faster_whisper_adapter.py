@@ -32,37 +32,16 @@ class FasterWhisperAdapter(ISTTEngine):
             try:
                 from faster_whisper import WhisperModel
 
-                cpu_threads = min(4, setup_cpu_thread_budget())
-                try:
-                    self._model = WhisperModel(
-                        self.model_size,
-                        device=self.device_config.device,
-                        compute_type=self.device_config.compute_type,
-                        device_index=self.device_config.device_index,
-                        cpu_threads=cpu_threads,
-                    )
-                except Exception as first_err:
-                    if "mkl_malloc" in str(first_err).lower() or "memory" in str(first_err).lower():
-                        logger.warning("WhisperModel 1. yükleme uyarısı (%s), daha hafif model 'small' / cpu_threads=1 ile tekrar deneniyor.", first_err)
-                        try:
-                            self._model = WhisperModel(
-                                "small",
-                                device=self.device_config.device,
-                                compute_type=self.device_config.compute_type,
-                                device_index=self.device_config.device_index,
-                                cpu_threads=1,
-                            )
-                        except Exception as second_err:
-                            logger.warning("WhisperModel small yükleme uyarısı (%s), 'tiny' (int8) modeline düşülüyor.", second_err)
-                            self._model = WhisperModel(
-                                "tiny",
-                                device=self.device_config.device,
-                                compute_type="int8",
-                                device_index=self.device_config.device_index,
-                                cpu_threads=1,
-                            )
-                    else:
-                        raise first_err
+                cpu_threads = setup_cpu_thread_budget()
+                if cpu_threads > 4:
+                    cpu_threads = 4
+                self._model = WhisperModel(
+                    self.model_size,
+                    device=self.device_config.device,
+                    compute_type=self.device_config.compute_type,
+                    device_index=self.device_config.device_index,
+                    cpu_threads=cpu_threads,
+                )
 
                 try:
                     from faster_whisper import BatchedInferencePipeline
@@ -84,7 +63,7 @@ class FasterWhisperAdapter(ISTTEngine):
         profile = os.getenv("PIPELINE_PROFILE", "full").lower()
         default_beam = "1" if profile == "feedback" else "5"
         beam_size = int(os.getenv("WHISPER_BEAM_SIZE", default_beam))
-        batch_size = int(os.getenv("WHISPER_BATCH_SIZE", "16"))
+        batch_size = int(os.getenv("WHISPER_BATCH_SIZE", "1"))
         vad_params = dict(min_silence_duration_ms=1000, speech_pad_ms=400)
 
         prompt_str = self.initial_prompt or (

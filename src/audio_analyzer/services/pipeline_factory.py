@@ -1,4 +1,5 @@
 import logging
+import threading
 
 from audio_analyzer.adapters.audio.silero_vad import SileroVADProcessor
 from audio_analyzer.config import get_settings
@@ -10,12 +11,14 @@ from audio_analyzer.services.semantic_refiner import SemanticRefiner
 logger = logging.getLogger(__name__)
 
 _cached_pipeline: AudioAnalysisPipeline | None = None
+_pipeline_lock = threading.Lock()
 
 
 def reset_pipeline_cache():
     """Önbellekteki pipeline nesnesini sıfırlar, böylece güncel parametreler yeniden yüklenir."""
     global _cached_pipeline
-    _cached_pipeline = None
+    with _pipeline_lock:
+        _cached_pipeline = None
 
 
 def get_shared_pipeline() -> AudioAnalysisPipeline:
@@ -28,6 +31,10 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
     global _cached_pipeline
     if _cached_pipeline is not None:
         return _cached_pipeline
+
+    with _pipeline_lock:
+        if _cached_pipeline is not None:
+            return _cached_pipeline
 
     settings = get_settings()
     device_config = DeviceConfig()

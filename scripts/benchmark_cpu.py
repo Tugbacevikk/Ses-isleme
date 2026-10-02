@@ -27,6 +27,8 @@ def measure_pipeline_stages(
     os.environ["WHISPER_MODEL_SIZE"] = model_size
     os.environ["PIPELINE_PROFILE"] = profile
     os.environ["WORKER_CPU_THREADS"] = str(threads)
+    from audio_analyzer.utils.cpu_budget import setup_cpu_thread_budget
+    setup_cpu_thread_budget(threads)
 
     from audio_analyzer.adapters.audio.audio_converter import AudioConverterProcessor
     from audio_analyzer.adapters.audio.denoiser import DeepFilterDenoiser
@@ -72,8 +74,11 @@ def measure_pipeline_stages(
         except Exception:
             should_denoise = True
 
+    import tempfile
+    import uuid
+
     if should_denoise and denoiser:
-        denoised_path = str(Path(audio_path).with_suffix(".bm_denoised.wav"))
+        denoised_path = os.path.join(tempfile.gettempdir(), f"{Path(audio_path).stem}_{uuid.uuid4().hex[:6]}.bm_denoised.wav")
         working_path = denoiser.denoise(audio_path, denoised_path)
         if working_path != audio_path:
             temp_files.append(working_path)
@@ -81,7 +86,7 @@ def measure_pipeline_stages(
 
     # 3. Audio conversion / resample
     t0 = time.perf_counter()
-    processed_path = str(Path(working_path).with_suffix(".bm_proc.wav"))
+    processed_path = os.path.join(tempfile.gettempdir(), f"{Path(working_path).stem}_{uuid.uuid4().hex[:6]}.bm_proc.wav")
     working_path = audio_processor.normalize_and_resample(working_path, processed_path, 16000)
     if working_path != audio_path and working_path not in temp_files:
         temp_files.append(working_path)
@@ -178,6 +183,19 @@ def run_benchmark(audio_paths: list[str], models: list[str], profiles: list[str]
                 sum_diarize += res["t_diarize"]
                 sum_refine += res["t_refine"]
                 sum_total += res["t_total"]
+
+                file_name = Path(audio_path).name
+                file_rtf = res["t_total"] / res["audio_duration"] if res["audio_duration"] > 0 else 0
+                import ctypes
+                from ctypes import wintypes
+                class PMC(ctypes.Structure):
+                    _fields_ = [('cb', wintypes.DWORD), ('pf', wintypes.DWORD), ('pws', ctypes.c_size_t), ('ws', ctypes.c_size_t)]
+                pmc = PMC()
+                pmc.cb = ctypes.sizeof(PMC)
+                ctypes.windll.kernel32.K32GetProcessMemoryInfo(ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb)
+                ram_mb = pmc.ws / (1024 * 1024)
+
+                print(f"   [Dosya: {file_name:<18}] Süre: {res['audio_duration']:>5.1f}s | İşlem: {res['t_total']:>5.2f}s | RTF: {file_rtf:.3f} | RAM: {ram_mb:.1f} MB")
 
             if total_audio_sec <= 0:
                 continue

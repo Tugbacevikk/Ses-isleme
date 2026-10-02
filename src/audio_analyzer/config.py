@@ -70,7 +70,7 @@ class Settings:
     )
     vad_engine: str = field(default_factory=lambda: os.getenv("VAD_ENGINE", "faster_whisper").lower())
     run_pipeline_sequentially: bool = field(
-        default_factory=lambda: os.getenv("RUN_PIPELINE_SEQUENTIALLY", "false").lower() == "true"
+        default_factory=lambda: os.getenv("RUN_PIPELINE_SEQUENTIALLY", "true").lower() == "true"
     )
 
     # 5. SemanticRefiner & Yerel LLM
