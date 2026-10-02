@@ -66,6 +66,19 @@ class Settings:
     ollama_url: str = field(default_factory=lambda: os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate"))
     ollama_model: str = field(default_factory=lambda: os.getenv("OLLAMA_MODEL", "llama3.2"))
 
+    # 6. Sweeper & DLQ (Yeniden Deneme ve Garanti Hizmeti)
+    sweeper_interval_sec: float = field(default_factory=lambda: float(os.getenv("SWEEPER_INTERVAL_SEC", "30.0")))
+    pending_stale_sec: int = field(default_factory=lambda: int(os.getenv("PENDING_STALE_SEC", "300")))
+    processing_stale_sec: int = field(default_factory=lambda: int(os.getenv("PROCESSING_STALE_SEC", "1800")))
+    max_job_attempts: int = field(default_factory=lambda: int(os.getenv("MAX_JOB_ATTEMPTS", "3")))
+
+    # 7. S3 / Bulut Nesne Depolama (STORAGE_TYPE=s3 durumunda)
+    s3_bucket_name: str = field(default_factory=lambda: os.getenv("S3_BUCKET_NAME", "ses-analizi-storage"))
+    aws_access_key_id: str = field(default_factory=lambda: os.getenv("AWS_ACCESS_KEY_ID", ""))
+    aws_secret_access_key: str = field(default_factory=lambda: os.getenv("AWS_SECRET_ACCESS_KEY", ""))
+    aws_region: str = field(default_factory=lambda: os.getenv("AWS_REGION", "us-east-1"))
+    s3_endpoint_url: str = field(default_factory=lambda: os.getenv("S3_ENDPOINT_URL", "http://localhost:9000"))
+
 
 _settings_instance: Optional[Settings] = None
 
