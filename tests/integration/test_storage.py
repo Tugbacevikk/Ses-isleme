@@ -1,9 +1,9 @@
-import os
-import tempfile
 
 import pytest
 
-from audio_analyzer.adapters.storage.in_memory_storage_adapter import InMemoryStorageAdapter
+from audio_analyzer.adapters.storage.in_memory_storage_adapter import (
+    InMemoryStorageAdapter,
+)
 from audio_analyzer.adapters.storage.s3_storage_adapter import S3StorageAdapter
 
 

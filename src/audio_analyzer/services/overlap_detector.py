@@ -1,7 +1,10 @@
 import logging
-from typing import List
 
-from audio_analyzer.domain.models import DiarizationSegment, OverlapSegment, OverlapSummary
+from audio_analyzer.domain.models import (
+    DiarizationSegment,
+    OverlapSegment,
+    OverlapSummary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -14,14 +17,14 @@ class OverlapDetector:
 
     @staticmethod
     def detect_overlaps(
-        diarization_segments: List[DiarizationSegment], total_audio_duration: float = 0.0
+        diarization_segments: list[DiarizationSegment], total_audio_duration: float = 0.0
     ) -> OverlapSummary:
         if not diarization_segments or len(diarization_segments) < 2:
             return OverlapSummary()
 
         # Segmentleri başlama zamanına göre sırala
         sorted_segs = sorted(diarization_segments, key=lambda s: s.start_time)
-        overlaps: List[OverlapSegment] = []
+        overlaps: list[OverlapSegment] = []
         total_overlap_seconds = 0.0
 
         for i in range(len(sorted_segs)):

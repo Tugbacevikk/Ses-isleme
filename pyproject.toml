@@ -7,7 +7,7 @@ name = "audio-analyzer"
 version = "0.1.0"
 description = "High-performance Audio Analysis (STT + Speaker Diarization) System"
 authors = [
-    { name = "Engineers", email = "engineer@example.com" }
+    { name = "Audio Analysis Team" }
 ]
 readme = "README.md"
 requires-python = ">=3.10"
@@ -65,6 +65,7 @@ markers = [
     "integration: Integration tests",
     "system: End-to-end system tests",
     "benchmark: Performance benchmark tests",
+    "torch: Tests requiring PyTorch models",
 ]
 
 [tool.black]

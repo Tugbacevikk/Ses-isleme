@@ -1,16 +1,26 @@
-import asyncio
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Tuple
 
 from sqlalchemy import delete, inspect, select, update
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from audio_analyzer.adapters.repository.models import AudioRecordModel, TranscriptUtteranceModel, WebhookDeliveryModel
-from audio_analyzer.domain.interfaces import ITranscriptRepository, IWebhookOutboxRepository
-from audio_analyzer.domain.models import AudioRecord, JobStatus, TranscriptUtterance
+from audio_analyzer.adapters.repository.models import (
+    AudioRecordModel,
+    TranscriptUtteranceModel,
+    WebhookDeliveryModel,
+)
+from audio_analyzer.domain.interfaces import (
+    ITranscriptRepository,
+    IWebhookOutboxRepository,
+)
+from audio_analyzer.domain.models import (
+    AudioRecord,
+    JobStatus,
+    OverlapSummary,
+    TranscriptUtterance,
+)
 
 
 class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
@@ -31,6 +41,13 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
             await self.session.flush()
 
     async def save_record(self, record: AudioRecord) -> AudioRecord:
+        overlap_str = None
+        if record.overlap_summary:
+            if hasattr(record.overlap_summary, "model_dump"):
+                overlap_str = json.dumps(record.overlap_summary.model_dump())
+            elif hasattr(record.overlap_summary, "dict"):
+                overlap_str = json.dumps(record.overlap_summary.dict())
+
         orm_model = AudioRecordModel(
             id=record.id,
             external_id=record.external_id,
@@ -47,6 +64,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
             attempts=record.attempts,
             processing_started_at=record.processing_started_at,
             last_error_at=record.last_error_at,
+            overlap_summary=overlap_str,
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
@@ -54,7 +72,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         await self._commit_or_flush()
         return self._to_domain(orm_model)
 
-    async def get_record_by_id(self, record_id: uuid.UUID) -> Optional[AudioRecord]:
+    async def get_record_by_id(self, record_id: uuid.UUID) -> AudioRecord | None:
         stmt = (
             select(AudioRecordModel)
             .where(AudioRecordModel.id == record_id)
@@ -66,7 +84,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
             return None
         return self._to_domain(orm_model)
 
-    async def get_record_by_external_id(self, external_id: str) -> Optional[AudioRecord]:
+    async def get_record_by_external_id(self, external_id: str) -> AudioRecord | None:
         stmt = (
             select(AudioRecordModel)
             .where(AudioRecordModel.external_id == external_id)
@@ -96,7 +114,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         await self._commit_or_flush()
         return delivery_id
 
-    async def get_due_webhook_deliveries(self, limit: int = 50) -> List[dict]:
+    async def get_due_webhook_deliveries(self, limit: int = 50) -> list[dict]:
         now = datetime.now(timezone.utc)
         stmt = (
             select(WebhookDeliveryModel)
@@ -124,7 +142,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         ]
 
     async def update_webhook_delivery_status(
-        self, delivery_id: uuid.UUID, status: str, attempts: int, next_attempt_at: Optional[object] = None, error_message: Optional[str] = None
+        self, delivery_id: uuid.UUID, status: str, attempts: int, next_attempt_at: object | None = None, error_message: str | None = None
     ) -> bool:
         stmt = select(WebhookDeliveryModel).where(WebhookDeliveryModel.id == delivery_id)
         res = await self.session.execute(stmt)
@@ -146,7 +164,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
 
     async def claim_job_atomically(
         self, record_id: uuid.UUID, stale_seconds: int = 1800
-    ) -> Tuple[bool, Optional[AudioRecord], bool]:
+    ) -> tuple[bool, AudioRecord | None, bool]:
         record = await self.get_record_by_id(record_id)
         if not record:
             return False, None, False
@@ -188,7 +206,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
                 return True, current_record, True
             return False, current_record, False
 
-    async def touch_processing(self, record_id: uuid.UUID, claim_token: Optional[object]) -> bool:
+    async def touch_processing(self, record_id: uuid.UUID, claim_token: object | None) -> bool:
         stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
         res = await self.session.execute(stmt)
         orm_model = res.scalar_one_or_none()
@@ -211,11 +229,11 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
     async def complete_job(
         self,
         record_id: uuid.UUID,
-        claim_token: Optional[object],
-        utterances: List[TranscriptUtterance],
-        language: Optional[str] = None,
-        overlap_summary: Optional[object] = None,
-        webhook_payload: Optional[str] = None,
+        claim_token: object | None,
+        utterances: list[TranscriptUtterance],
+        language: str | None = None,
+        overlap_summary: object | None = None,
+        webhook_payload: str | None = None,
     ) -> bool:
         stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
         res = await self.session.execute(stmt)
@@ -270,6 +288,16 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         if language:
             orm_model.language = language
 
+        if overlap_summary is not None:
+            if hasattr(overlap_summary, "model_dump"):
+                orm_model.overlap_summary = json.dumps(overlap_summary.model_dump())
+            elif hasattr(overlap_summary, "dict"):
+                orm_model.overlap_summary = json.dumps(overlap_summary.dict())
+            elif isinstance(overlap_summary, dict):
+                orm_model.overlap_summary = json.dumps(overlap_summary)
+            elif isinstance(overlap_summary, str):
+                orm_model.overlap_summary = overlap_summary
+
         # Transactional Outbox: insert WebhookDeliveryModel in the SAME transaction
         if orm_model.callback_url and webhook_payload:
             delivery_id = uuid.uuid4()
@@ -290,7 +318,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         return True
 
     async def update_status(
-        self, record_id: uuid.UUID, status: JobStatus, error_message: Optional[str] = None
+        self, record_id: uuid.UUID, status: JobStatus, error_message: str | None = None
     ) -> bool:
         stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
         res = await self.session.execute(stmt)
@@ -308,8 +336,8 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
     async def save_utterances(
         self,
         record_id: uuid.UUID,
-        utterances: List[TranscriptUtterance],
-        language: Optional[str] = None,
+        utterances: list[TranscriptUtterance],
+        language: str | None = None,
     ) -> bool:
         return await self.complete_job(
             record_id=record_id,
@@ -341,6 +369,22 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         await self._commit_or_flush()
         return True
 
+    async def update_utterance_by_id(
+        self, record_id: uuid.UUID, utterance_id: uuid.UUID, speaker_id: str, text: str
+    ) -> bool:
+        stmt = select(TranscriptUtteranceModel).where(
+            TranscriptUtteranceModel.audio_record_id == record_id,
+            TranscriptUtteranceModel.id == utterance_id,
+        )
+        res = await self.session.execute(stmt)
+        orm_u = res.scalar_one_or_none()
+        if not orm_u:
+            return False
+        orm_u.speaker_id = speaker_id
+        orm_u.text = text
+        await self._commit_or_flush()
+        return True
+
     async def delete_utterance(self, record_id: uuid.UUID, utterance_index: int) -> bool:
         stmt = (
             select(TranscriptUtteranceModel)
@@ -358,6 +402,19 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
             return False
 
         await self.session.delete(orm_utterances[utterance_index])
+        await self._commit_or_flush()
+        return True
+
+    async def delete_utterance_by_id(self, record_id: uuid.UUID, utterance_id: uuid.UUID) -> bool:
+        stmt = select(TranscriptUtteranceModel).where(
+            TranscriptUtteranceModel.audio_record_id == record_id,
+            TranscriptUtteranceModel.id == utterance_id,
+        )
+        res = await self.session.execute(stmt)
+        orm_u = res.scalar_one_or_none()
+        if not orm_u:
+            return False
+        await self.session.delete(orm_u)
         await self._commit_or_flush()
         return True
 
@@ -381,7 +438,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         await self._commit_or_flush()
         return True
 
-    async def list_records(self, skip: int = 0, limit: int = 20) -> List[AudioRecord]:
+    async def list_records(self, skip: int = 0, limit: int = 20) -> list[AudioRecord]:
         stmt = (
             select(AudioRecordModel)
             .options(selectinload(AudioRecordModel.utterances))
@@ -389,6 +446,18 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
             .offset(skip)
             .limit(limit)
         )
+        res = await self.session.execute(stmt)
+        orm_records = res.scalars().all()
+        return [self._to_domain(r) for r in orm_records]
+
+    async def get_expired_records(
+        self, before: datetime, statuses: list[JobStatus] | None = None, limit: int = 100
+    ) -> list[AudioRecord]:
+        stmt = select(AudioRecordModel).where(AudioRecordModel.created_at < before)
+        if statuses:
+            status_vals = [s.value if hasattr(s, "value") else str(s) for s in statuses]
+            stmt = stmt.where(AudioRecordModel.status.in_(status_vals))
+        stmt = stmt.order_by(AudioRecordModel.created_at.asc()).limit(limit)
         res = await self.session.execute(stmt)
         orm_records = res.scalars().all()
         return [self._to_domain(r) for r in orm_records]
@@ -409,7 +478,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         error_message: str,
         is_transient: bool = True,
         max_attempts: int = 3,
-    ) -> Tuple[int, bool]:
+    ) -> tuple[int, bool]:
         """
         İş hatasını kaydeder ve deneme sayısını (attempts) artırır.
         Hata kalıcı ise veya maks deneme sayısı aşıldıysa durumu FAILED yapar (is_final=True).
@@ -438,7 +507,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         await self._commit_or_flush()
         return orm_model.attempts, is_final
 
-    async def get_stale_pending_records(self, stale_seconds: int = 300, limit: int = 50) -> List[AudioRecord]:
+    async def get_stale_pending_records(self, stale_seconds: int = 300, limit: int = 50) -> list[AudioRecord]:
         """
         'stale_seconds' süresidir PENDING durumunda bekleyen kayıtları getirir.
         """
@@ -467,7 +536,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         await self._commit_or_flush()
         return True
 
-    async def get_stale_processing_records(self, stale_seconds: int = 1800, limit: int = 50) -> List[AudioRecord]:
+    async def get_stale_processing_records(self, stale_seconds: int = 1800, limit: int = 50) -> list[AudioRecord]:
         """
         'stale_seconds' süresidir PROCESSING durumunda kalmış (çökmüş/askıda) kayıtları getirir.
         """
@@ -522,6 +591,14 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
             )
             for u in sorted_utterances
         ]
+        overlap_summary_domain = None
+        if getattr(orm, "overlap_summary", None):
+            try:
+                data = json.loads(orm.overlap_summary)
+                overlap_summary_domain = OverlapSummary(**data)
+            except Exception:
+                pass
+
         return AudioRecord(
             id=orm.id,
             external_id=getattr(orm, "external_id", None),
@@ -538,6 +615,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
             attempts=getattr(orm, "attempts", 0) or 0,
             processing_started_at=getattr(orm, "processing_started_at", None),
             last_error_at=getattr(orm, "last_error_at", None),
+            overlap_summary=overlap_summary_domain,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
             utterances=domain_utterances,

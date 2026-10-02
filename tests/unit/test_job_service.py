@@ -1,11 +1,10 @@
-import uuid
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
+from unittest.mock import MagicMock
 
 from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
-from audio_analyzer.adapters.storage.in_memory_storage_adapter import InMemoryStorageAdapter
-from audio_analyzer.domain.models import AudioRecord, JobStatus
+from audio_analyzer.adapters.storage.in_memory_storage_adapter import (
+    InMemoryStorageAdapter,
+)
+from audio_analyzer.domain.models import JobStatus
 from audio_analyzer.services.job_service import JobService, sanitize_error_message
 
 

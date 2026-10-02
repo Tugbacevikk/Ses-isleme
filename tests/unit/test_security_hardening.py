@@ -1,14 +1,16 @@
 import hashlib
 import hmac
-import os
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from fastapi import HTTPException
-from audio_analyzer.api.routers.jobs import verify_api_key
-from audio_analyzer.api.main import lifespan, app, get_cors_config
-from audio_analyzer.utils.ssrf_validator import validate_callback_url
-from audio_analyzer.services.webhook_service import WebhookService
+
+from audio_analyzer.api.main import app, get_cors_config, lifespan
 from audio_analyzer.api.rate_limiter import RedisRateLimiter
+from audio_analyzer.api.routers.jobs import verify_api_key
+from audio_analyzer.services.webhook_service import WebhookService
+from audio_analyzer.utils.ssrf_validator import validate_callback_url
+
 
 @pytest.mark.asyncio
 async def test_startup_fails_in_production_without_api_key():
@@ -63,8 +65,8 @@ def test_webhook_signature_generation():
     sig = svc.generate_signature(timestamp, body)
     
     assert sig.startswith("sha256=")
-    expected_data = f"{timestamp}.{body}".encode("utf-8")
-    expected_hash = hmac.new("my_secret_key".encode("utf-8"), expected_data, hashlib.sha256).hexdigest()
+    expected_data = f"{timestamp}.{body}".encode()
+    expected_hash = hmac.new(b"my_secret_key", expected_data, hashlib.sha256).hexdigest()
     assert sig == f"sha256={expected_hash}"
 
 @pytest.mark.asyncio

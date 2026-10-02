@@ -1,4 +1,5 @@
 import asyncio
+
 import pytest
 
 from audio_analyzer.workers.webhook_worker import run_webhook_worker_loop

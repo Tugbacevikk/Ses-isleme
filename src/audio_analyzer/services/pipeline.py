@@ -2,15 +2,23 @@ import concurrent.futures
 import io
 import logging
 import os
+import time
 from math import gcd
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 import numpy as np
 import scipy.signal
 import soundfile as sf
 
-from audio_analyzer.domain.interfaces import IAudioDenoiser, IAudioProcessor, IDiarizer, ISTTEngine, IVADProcessor
+from audio_analyzer.api.metrics import STAGE_DURATION_HISTOGRAM
+from audio_analyzer.config import get_settings
+from audio_analyzer.domain.interfaces import (
+    IAudioDenoiser,
+    IAudioProcessor,
+    IDiarizer,
+    ISTTEngine,
+    IVADProcessor,
+)
 from audio_analyzer.domain.models import OverlapSummary, TranscriptUtterance
 from audio_analyzer.services.fusion_engine import FusionEngine
 from audio_analyzer.services.overlap_detector import OverlapDetector
@@ -60,11 +68,11 @@ class AudioAnalysisPipeline:
         self,
         stt_engine: ISTTEngine,
         diarizer: IDiarizer,
-        audio_processor: Optional[IAudioProcessor] = None,
-        vad_processor: Optional[IVADProcessor] = None,
-        denoiser: Optional[IAudioDenoiser] = None,
-        fusion_engine: Optional[FusionEngine] = None,
-        semantic_refiner: Optional[SemanticRefiner] = None,
+        audio_processor: IAudioProcessor | None = None,
+        vad_processor: IVADProcessor | None = None,
+        denoiser: IAudioDenoiser | None = None,
+        fusion_engine: FusionEngine | None = None,
+        semantic_refiner: SemanticRefiner | None = None,
     ):
         self.stt_engine = stt_engine
         self.diarizer = diarizer
@@ -76,24 +84,23 @@ class AudioAnalysisPipeline:
 
     def process(
         self, audio_path: str
-    ) -> Tuple[List[TranscriptUtterance], Optional[str], OverlapSummary]:
+    ) -> tuple[list[TranscriptUtterance], str | None, OverlapSummary]:
         """
         Ses dosyasını (MP3/WAV/FLAC vb.) analiz eder.
         Returns: (List[TranscriptUtterance], detected_language, overlap_summary)
         """
-        profile = os.getenv("PIPELINE_PROFILE", "full").lower()
-        min_diarize_sec = float(os.getenv("PIPELINE_MIN_DIARIZE_SEC", "2.0"))
-        min_snr_db = float(os.getenv("PIPELINE_MIN_SNR_DB", "15.0"))
-        domain_mode = os.getenv("DOMAIN_MODE")
-        vad_engine = os.getenv("VAD_ENGINE", "faster_whisper").lower()
+        settings = get_settings()
+        profile = settings.pipeline_profile
+        min_snr_db = settings.pipeline_min_snr_db
 
         working_path = audio_path
-        created_temp_files: List[str] = []
+        created_temp_files: list[str] = []
 
         try:
             # 1. Ön Gürültü Temizleme (DeepFilterNet Denoiser)
             should_denoise = False
-            if self.denoiser:
+            if self.denoiser and self.denoiser.enabled:
+                t0 = time.monotonic()
                 if profile == "feedback":
                     try:
                         audio_data, sr = sf.read(audio_path)
@@ -110,11 +117,13 @@ class AudioAnalysisPipeline:
                         should_denoise = True
                 else:
                     should_denoise = True
+                STAGE_DURATION_HISTOGRAM.labels(stage="denoise_check").observe(time.monotonic() - t0)
 
             import tempfile
             import uuid
 
-            if should_denoise and self.denoiser:
+            if should_denoise and self.denoiser and self.denoiser.enabled:
+                t0 = time.monotonic()
                 temp_name = f"{Path(audio_path).stem}_{uuid.uuid4().hex[:8]}.denoised.wav"
                 denoised_wav_path = os.path.join(tempfile.gettempdir(), temp_name)
                 audio_after_denoise = self.denoiser.denoise(
@@ -123,9 +132,11 @@ class AudioAnalysisPipeline:
                 if audio_after_denoise != audio_path:
                     created_temp_files.append(audio_after_denoise)
                     working_path = audio_after_denoise
+                STAGE_DURATION_HISTOGRAM.labels(stage="denoise").observe(time.monotonic() - t0)
 
             # 2. Ses Ön İşleme & Normalizasyon (16kHz Mono WAV Dönüşümü)
             if self.audio_processor:
+                t0 = time.monotonic()
                 temp_name = f"{Path(working_path).stem}_{uuid.uuid4().hex[:8]}.processed.wav"
                 processed_wav_path = os.path.join(tempfile.gettempdir(), temp_name)
                 working_path = self.audio_processor.normalize_and_resample(
@@ -135,61 +146,15 @@ class AudioAnalysisPipeline:
                 )
                 if working_path != audio_path and working_path not in created_temp_files:
                     created_temp_files.append(working_path)
+                STAGE_DURATION_HISTOGRAM.labels(stage="normalize").observe(time.monotonic() - t0)
 
-            # 3. VAD (Çift VAD engelleme: STT dahili VAD kullanıyorsa harici VAD pas geçilir)
-            speech_timestamps: Optional[List[Tuple[float, float]]] = None
-            stt_has_vad = getattr(self.stt_engine, "has_vad_filter", True)
-            if self.vad_processor and (vad_engine == "silero" or not stt_has_vad):
-                try:
-                    speech_timestamps = self.vad_processor.get_speech_timestamps(working_path)
-                except Exception as e:
-                    logger.warning("VAD İşleme Hatası: %s. VAD filtresi atlanıyor.", e)
+            # Pre-calculate audio duration directly from audio file before STT
+            try:
+                audio_duration = float(sf.info(working_path).duration)
+            except Exception:
+                audio_duration = 0.0
 
-            # 4 & 5. STT ve Diarization Motorlarını Çalıştır (Varsayılan olarak paralel ThreadPool)
-            run_sequentially = (os.getenv("RUN_PIPELINE_SEQUENTIALLY", "false").lower() == "true")
-
-            if run_sequentially:
-                words, detected_language = self.stt_engine.transcribe(working_path)
-                total_duration = max((w.end_time for w in words), default=0.0)
-
-                if profile == "feedback" and total_duration < min_diarize_sec:
-                    logger.info("Ses süresi (%.1f sn < %.1f sn), diarization atlanıyor.", total_duration, min_diarize_sec)
-                    diarization_segments = []
-                else:
-                    diarization_segments = self.diarizer.diarize(working_path)
-            else:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                    future_stt = executor.submit(self.stt_engine.transcribe, working_path)
-                    future_diar = executor.submit(self.diarizer.diarize, working_path)
-
-                    words, detected_language = future_stt.result()
-                    diarization_segments = future_diar.result()
-
-            # 4b. VAD Filtrelemesi (harici VAD varsa)
-            if speech_timestamps and words:
-                words = self._filter_words_with_vad(words, speech_timestamps)
-
-            # 6. Konuşma Çakışması (Overlap Detection) Metrikleri
-            total_duration = 0.0
-            if words:
-                total_duration = max(w.end_time for w in words)
-            elif diarization_segments:
-                total_duration = max(s.end_time for s in diarization_segments)
-
-            overlap_summary = OverlapDetector.detect_overlaps(
-                diarization_segments=diarization_segments, total_audio_duration=total_duration
-            )
-
-            # 7. FusionEngine ile hizalama
-            raw_utterances = self.fusion_engine.align(words, diarization_segments)
-
-            # 8. SemanticRefiner ile anlamsal rol hizalaması (feedback profilinde yalnızca DOMAIN_MODE tanımlıysa)
-            if profile == "feedback" and not domain_mode:
-                final_utterances = raw_utterances
-            else:
-                final_utterances = self.semantic_refiner.refine(raw_utterances)
-
-            return final_utterances, detected_language, overlap_summary
+            return self._execute_pipeline(working_path, audio_duration)
         finally:
             for tmp_file in created_temp_files:
                 if Path(tmp_file).exists():
@@ -200,15 +165,13 @@ class AudioAnalysisPipeline:
 
     def process_bytes(
         self, file_bytes: bytes
-    ) -> Tuple[List[TranscriptUtterance], Optional[str], OverlapSummary]:
+    ) -> tuple[list[TranscriptUtterance], str | None, OverlapSummary]:
         """
         0-Disk I/O: Ses dosyasını doğrudan RAM bellek üzerinden işler.
         """
-        profile = os.getenv("PIPELINE_PROFILE", "full").lower()
-        min_diarize_sec = float(os.getenv("PIPELINE_MIN_DIARIZE_SEC", "2.0"))
-        min_snr_db = float(os.getenv("PIPELINE_MIN_SNR_DB", "15.0"))
-        domain_mode = os.getenv("DOMAIN_MODE")
-        vad_engine = os.getenv("VAD_ENGINE", "faster_whisper").lower()
+        settings = get_settings()
+        profile = settings.pipeline_profile
+        min_snr_db = settings.pipeline_min_snr_db
 
         # 1. Ses Baytlarını RAM'de 16kHz Mono float32 NumPy dizisine çevir
         if self.audio_processor and hasattr(self.audio_processor, "convert_bytes_to_ndarray"):
@@ -226,7 +189,8 @@ class AudioAnalysisPipeline:
 
         # 2. Ön Gürültü Temizleme (RAM Üzerinde Denoise)
         should_denoise = False
-        if self.denoiser:
+        if self.denoiser and self.denoiser.enabled:
+            t0 = time.monotonic()
             if profile == "feedback":
                 snr_db = estimate_snr_db(audio_array, 16000)
                 if snr_db < min_snr_db:
@@ -236,68 +200,116 @@ class AudioAnalysisPipeline:
                     logger.info("SNR yeterli (%.1f dB >= %.1f dB), RAM denoiser atlanıyor.", snr_db, min_snr_db)
             else:
                 should_denoise = True
+            STAGE_DURATION_HISTOGRAM.labels(stage="denoise_check").observe(time.monotonic() - t0)
 
-        if should_denoise and self.denoiser and hasattr(self.denoiser, "denoise_array"):
+        if should_denoise and self.denoiser and self.denoiser.enabled and hasattr(self.denoiser, "denoise_array"):
+            t0 = time.monotonic()
             audio_array = self.denoiser.denoise_array(audio_array, sample_rate=16000)
+            STAGE_DURATION_HISTOGRAM.labels(stage="denoise").observe(time.monotonic() - t0)
 
-        # 3. VAD ile konuşma aralıkları (RAM Üzerinde)
-        speech_timestamps: Optional[List[Tuple[float, float]]] = None
+        # Pre-calculate audio duration directly from array before STT
+        audio_duration = float(len(audio_array)) / 16000.0 if len(audio_array) > 0 else 0.0
+
+        return self._execute_pipeline(audio_array, audio_duration)
+
+    def _execute_pipeline(
+        self, audio_input: str | np.ndarray, audio_duration: float
+    ) -> tuple[list[TranscriptUtterance], str | None, OverlapSummary]:
+        """
+        Ortak pipeline yürütme motoru. Hem dosya yolu hem NumPy dizisi ile çalışır.
+        STT öncesinde hesaplanan ses süresi ile diarization kararını verir.
+        """
+        settings = get_settings()
+        profile = settings.pipeline_profile
+        min_diarize_sec = settings.pipeline_min_diarize_sec
+        domain_mode = settings.domain_mode
+        vad_engine = settings.vad_engine
+        run_sequentially = settings.run_pipeline_sequentially
+
+        # 3. VAD İşleme
+        speech_timestamps: list[tuple[float, float]] | None = None
         stt_has_vad = getattr(self.stt_engine, "has_vad_filter", True)
         if self.vad_processor and (vad_engine == "silero" or not stt_has_vad):
+            t0 = time.monotonic()
             try:
-                speech_timestamps = self.vad_processor.get_speech_timestamps(audio_array)
+                speech_timestamps = self.vad_processor.get_speech_timestamps(audio_input)
             except Exception as e:
-                logger.warning("VAD In-Memory İşleme Hatası: %s. VAD filtresi atlanıyor.", e)
+                logger.warning("VAD İşleme Hatası: %s. VAD filtresi atlanıyor.", e)
+            STAGE_DURATION_HISTOGRAM.labels(stage="vad").observe(time.monotonic() - t0)
 
-        # 4 & 5. STT ve Diarization Motorlarını Çalıştır (Varsayılan olarak paralel ThreadPool)
-        run_sequentially = (os.getenv("RUN_PIPELINE_SEQUENTIALLY", "false").lower() == "true")
+        # Diarization Kararı (STT ÖNCESİNDE KONTROL)
+        should_diarize = True
+        if profile == "feedback" and audio_duration < min_diarize_sec:
+            logger.info("Ses süresi (%.1f sn < %.1f sn), diarization atlanıyor.", audio_duration, min_diarize_sec)
+            should_diarize = False
 
+        # 4 & 5. STT ve Diarization Motorlarını Çalıştır
         if run_sequentially:
-            words, detected_language = self.stt_engine.transcribe(audio_array)
-            total_duration = max((w.end_time for w in words), default=0.0)
+            t0 = time.monotonic()
+            words, detected_language = self.stt_engine.transcribe(audio_input)
+            STAGE_DURATION_HISTOGRAM.labels(stage="stt").observe(time.monotonic() - t0)
 
-            if profile == "feedback" and total_duration < min_diarize_sec:
-                logger.info("Ses süresi (%.1f sn < %.1f sn), RAM diarization atlanıyor.", total_duration, min_diarize_sec)
-                diarization_segments = []
+            if should_diarize:
+                t0 = time.monotonic()
+                diarization_segments = self.diarizer.diarize(audio_input)
+                STAGE_DURATION_HISTOGRAM.labels(stage="diarization").observe(time.monotonic() - t0)
             else:
-                diarization_segments = self.diarizer.diarize(audio_array)
+                diarization_segments = []
         else:
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                future_stt = executor.submit(self.stt_engine.transcribe, audio_array)
-                future_diar = executor.submit(self.diarizer.diarize, audio_array)
+                t0_stt = time.monotonic()
+                future_stt = executor.submit(self.stt_engine.transcribe, audio_input)
+
+                future_diar = None
+                if should_diarize:
+                    future_diar = executor.submit(self.diarizer.diarize, audio_input)
 
                 words, detected_language = future_stt.result()
-                diarization_segments = future_diar.result()
+                STAGE_DURATION_HISTOGRAM.labels(stage="stt").observe(time.monotonic() - t0_stt)
+
+                if future_diar:
+                    t0_diar = time.monotonic()
+                    diarization_segments = future_diar.result()
+                    STAGE_DURATION_HISTOGRAM.labels(stage="diarization").observe(time.monotonic() - t0_diar)
+                else:
+                    diarization_segments = []
 
         # 4b. VAD Filtrelemesi
         if speech_timestamps and words:
             words = self._filter_words_with_vad(words, speech_timestamps)
 
-        # 6. Konuşma Çakışması Metrikleri
-        total_duration = 0.0
-        if words:
-            total_duration = max(w.end_time for w in words)
-        elif diarization_segments:
-            total_duration = max(s.end_time for s in diarization_segments)
+        # 6. Overlap Detection
+        t0 = time.monotonic()
+        total_duration = audio_duration
+        if total_duration <= 0.0:
+            if words:
+                total_duration = max(w.end_time for w in words)
+            elif diarization_segments:
+                total_duration = max(s.end_time for s in diarization_segments)
 
         overlap_summary = OverlapDetector.detect_overlaps(
             diarization_segments=diarization_segments, total_audio_duration=total_duration
         )
+        STAGE_DURATION_HISTOGRAM.labels(stage="overlap_detection").observe(time.monotonic() - t0)
 
         # 7. FusionEngine
+        t0 = time.monotonic()
         raw_utterances = self.fusion_engine.align(words, diarization_segments)
+        STAGE_DURATION_HISTOGRAM.labels(stage="fusion").observe(time.monotonic() - t0)
 
-        # 8. SemanticRefiner (feedback profilinde yalnızca DOMAIN_MODE tanımlıysa)
+        # 8. SemanticRefiner
+        t0 = time.monotonic()
         if profile == "feedback" and not domain_mode:
             final_utterances = raw_utterances
         else:
             final_utterances = self.semantic_refiner.refine(raw_utterances)
+        STAGE_DURATION_HISTOGRAM.labels(stage="semantic_refine").observe(time.monotonic() - t0)
 
         return final_utterances, detected_language, overlap_summary
 
     def _filter_words_with_vad(
-        self, words: List, speech_timestamps: List[Tuple[float, float]], tolerance: float = 0.6
-    ) -> List:
+        self, words: list, speech_timestamps: list[tuple[float, float]], tolerance: float = 0.6
+    ) -> list:
         """
         VAD konuşma aralıklarının tamamen dışında kalan (sessizlikte türetilmiş)
         STT kelime halüsinasyonlarını eler.
@@ -315,4 +327,3 @@ class AudioAnalysisPipeline:
                 filtered_words.append(word)
 
         return filtered_words
-

@@ -3,8 +3,8 @@ import contextlib
 import logging
 import re
 import uuid
-from typing import Optional, Tuple
 
+from audio_analyzer.api.metrics import JOB_STATUS_COUNTER
 from audio_analyzer.domain.interfaces import IAudioStorage, ITranscriptRepository
 from audio_analyzer.domain.models import AudioRecord, JobStatus
 from audio_analyzer.services.pipeline import AudioAnalysisPipeline
@@ -45,7 +45,7 @@ class JobService:
         self,
         storage: IAudioStorage,
         repository: ITranscriptRepository,
-        pipeline: Optional[AudioAnalysisPipeline] = None,
+        pipeline: AudioAnalysisPipeline | None = None,
     ):
         self.storage = storage
         self.repo = repository
@@ -55,8 +55,8 @@ class JobService:
         self,
         file_name: str,
         file_bytes: bytes,
-        callback_url: Optional[str] = None,
-        external_id: Optional[str] = None,
+        callback_url: str | None = None,
+        external_id: str | None = None,
     ) -> uuid.UUID:
         """
         Yeni bir analiz görevi oluşturur (status='PENDING').
@@ -91,7 +91,7 @@ class JobService:
             raise ex
 
     async def execute_job(
-        self, record_id: uuid.UUID, file_bytes: Optional[bytes] = None
+        self, record_id: uuid.UUID, file_bytes: bytes | None = None
     ) -> bool:
         """
         Geriye dönük uyumluluk için boolean sonuç döndüren execute_job sarmalayıcısı.
@@ -100,8 +100,8 @@ class JobService:
         return status_str in ("COMPLETED", "SKIPPED")
 
     async def execute_job_detailed(
-        self, record_id: uuid.UUID, file_bytes: Optional[bytes] = None
-    ) -> Tuple[str, int, Optional[str]]:
+        self, record_id: uuid.UUID, file_bytes: bytes | None = None
+    ) -> tuple[str, int, str | None]:
         """
         Arka plan worker'ı tarafından çağrılır.
         Kısa transaction ile durumu 'PROCESSING' yapar, DB bağlantısını serbest bırakarak pipeline'ı çalıştırır.
@@ -170,20 +170,12 @@ class JobService:
 
             res = None
             if file_bytes and hasattr(self.pipeline, "process_bytes"):
-                pb = getattr(self.pipeline, "process_bytes", None)
-                pb_is_mock = type(pb).__name__ in ("MagicMock", "Mock", "AsyncMock")
-                should_call_pb = pb is not None and (
-                    not pb_is_mock
-                    or getattr(pb, "_mock_return_value", None) is not None
-                    or getattr(pb, "_mock_side_effect", None) is not None
-                )
-                if should_call_pb:
-                    try:
-                        res = await asyncio.to_thread(pb, file_bytes)
-                    except Exception as p_err:
-                        if not is_transient_error(p_err):
-                            raise p_err
-                        logger.warning("RAM (process_bytes) işleme uyarısı (%s), disk path yöntemine düşülüyor.", p_err)
+                try:
+                    res = await asyncio.to_thread(self.pipeline.process_bytes, file_bytes)
+                except Exception as p_err:
+                    if not is_transient_error(p_err):
+                        raise p_err
+                    logger.warning("RAM (process_bytes) işleme uyarısı (%s), disk path yöntemine düşülüyor.", p_err)
 
             if not res or not isinstance(res, (tuple, list)) or len(res) < 3:
                 local_path = await asyncio.to_thread(self.storage.get_path, record.storage_uri)
@@ -247,6 +239,7 @@ class JobService:
                 logger.info("İş başka worker'a geçti veya fencing token eşleşmedi (job_id=%s), sonuç atılıyor.", record_id)
                 return "SKIPPED", 0, None
 
+            JOB_STATUS_COUNTER.labels(status="COMPLETED").inc()
             logger.info("Ses analizi başarıyla tamamlandı ve atomik kaydedildi (job_id=%s, dil=%s).", record_id, language)
             completed_success = True
             return "COMPLETED", record.attempts, None
@@ -269,6 +262,8 @@ class JobService:
                 is_transient=is_transient,
                 max_attempts=max_attempts,
             )
+
+            JOB_STATUS_COUNTER.labels(status="FAILED" if is_final_failed else "PENDING").inc()
 
             if is_final_failed and record.callback_url:
                 payload = {

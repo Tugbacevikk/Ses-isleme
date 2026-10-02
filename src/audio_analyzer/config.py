@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -50,7 +50,7 @@ class Settings:
     worker_cpu_threads: int = field(default_factory=lambda: int(os.getenv("WORKER_CPU_THREADS", "4")))
     diarization_step_sec: float = field(default_factory=lambda: float(os.getenv("DIARIZATION_STEP_SEC", "0.75")))
     diarization_threshold: float = field(default_factory=lambda: float(os.getenv("DIARIZATION_THRESHOLD", "0.55")))
-    target_num_speakers: Optional[int] = field(
+    target_num_speakers: int | None = field(
         default_factory=lambda: int(os.getenv("TARGET_NUM_SPEAKERS", os.getenv("NUM_SPEAKERS", "2")))
         if os.getenv("TARGET_NUM_SPEAKERS") or os.getenv("NUM_SPEAKERS")
         else 2
@@ -60,8 +60,21 @@ class Settings:
         default_factory=lambda: os.getenv("ENABLE_DENOISER", "false").lower() == "true"
     )
 
+    # Pipeline Yapılandırması
+    pipeline_profile: str = field(default_factory=lambda: os.getenv("PIPELINE_PROFILE", "full").lower())
+    pipeline_min_diarize_sec: float = field(
+        default_factory=lambda: float(os.getenv("PIPELINE_MIN_DIARIZE_SEC", "2.0"))
+    )
+    pipeline_min_snr_db: float = field(
+        default_factory=lambda: float(os.getenv("PIPELINE_MIN_SNR_DB", "15.0"))
+    )
+    vad_engine: str = field(default_factory=lambda: os.getenv("VAD_ENGINE", "faster_whisper").lower())
+    run_pipeline_sequentially: bool = field(
+        default_factory=lambda: os.getenv("RUN_PIPELINE_SEQUENTIALLY", "false").lower() == "true"
+    )
+
     # 5. SemanticRefiner & Yerel LLM
-    domain_mode: Optional[str] = field(default_factory=lambda: os.getenv("DOMAIN_MODE"))
+    domain_mode: str | None = field(default_factory=lambda: os.getenv("DOMAIN_MODE"))
     use_llm: bool = field(default_factory=lambda: os.getenv("USE_LLM", "false").lower() == "true")
     ollama_url: str = field(default_factory=lambda: os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate"))
     ollama_model: str = field(default_factory=lambda: os.getenv("OLLAMA_MODEL", "llama3.2"))
@@ -80,7 +93,7 @@ class Settings:
     s3_endpoint_url: str = field(default_factory=lambda: os.getenv("S3_ENDPOINT_URL", "http://localhost:9000"))
 
 
-_settings_instance: Optional[Settings] = None
+_settings_instance: Settings | None = None
 
 
 def get_settings() -> Settings:

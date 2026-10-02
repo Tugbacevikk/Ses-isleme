@@ -48,9 +48,6 @@ build/
 native/target/
 experimental/native/target/
 
-# Workflows
-.github/
-
 # IDE & System
 .vscode/
 .idea/

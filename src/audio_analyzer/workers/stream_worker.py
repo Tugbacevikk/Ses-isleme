@@ -5,7 +5,6 @@ import os
 import signal
 import time
 import uuid
-from typing import Optional
 
 from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAdapter
 from audio_analyzer.adapters.repository.unit_of_work import SqlAlchemyUnitOfWork
@@ -26,8 +25,8 @@ class RedisStreamWorker:
 
     def __init__(
         self,
-        consumer_name: Optional[str] = None,
-        adapter: Optional[RedisStreamAdapter] = None,
+        consumer_name: str | None = None,
+        adapter: RedisStreamAdapter | None = None,
     ):
         self.consumer_name = consumer_name or f"worker_{os.getpid()}_{uuid.uuid4().hex[:6]}"
         self.adapter = adapter or RedisStreamAdapter()
@@ -73,7 +72,7 @@ class RedisStreamWorker:
                 # Kalıcı hata veya Maksimum deneme aşıldı -> Dead-Letter Stream'e aktar ve XACK et
                 await self.adapter.publish_to_dlq(
                     job_id=job_id_str,
-                    error_message=err_msg or "Unkown Failure",
+                    error_message=err_msg or "Unknown Failure",
                     attempts=attempts,
                 )
                 await self.adapter.ack_message(msg_id)
@@ -205,8 +204,10 @@ class RedisStreamWorker:
 
 async def start_worker_main():
     os.environ.setdefault("USE_REDIS_STREAM", "true")
+    from audio_analyzer.adapters.storage.storage_factory import (
+        assert_storage_shared_across_processes,
+    )
     from audio_analyzer.utils.cpu_budget import setup_cpu_thread_budget
-    from audio_analyzer.adapters.storage.storage_factory import assert_storage_shared_across_processes
 
     setup_cpu_thread_budget()
     assert_storage_shared_across_processes()

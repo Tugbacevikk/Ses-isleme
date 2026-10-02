@@ -13,7 +13,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from audio_analyzer.adapters.repository.models import AudioRecordModel, Base, TranscriptUtteranceModel
+from audio_analyzer.adapters.repository.models import (
+    AudioRecordModel,
+    Base,
+    TranscriptUtteranceModel,
+)
 
 
 def migrate():

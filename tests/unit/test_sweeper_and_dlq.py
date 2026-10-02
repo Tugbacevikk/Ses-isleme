@@ -1,4 +1,3 @@
-import asyncio
 import os
 import tempfile
 import uuid
@@ -15,7 +14,6 @@ from audio_analyzer.adapters.repository.postgres_repository import PostgresRepos
 from audio_analyzer.domain.errors import PermanentJobError, TransientJobError
 from audio_analyzer.domain.models import AudioRecord, JobStatus
 from audio_analyzer.services.job_service import JobService
-from audio_analyzer.workers.stream_worker import RedisStreamWorker
 from audio_analyzer.workers.sweeper import SweeperService
 
 
@@ -200,6 +198,7 @@ async def test_api_xadd_failure_returns_503(monkeypatch):
     """API'de Redis Stream XADD başarısız olduğunda 503 Service Unavailable döndüğünü doğrular."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+
     from audio_analyzer.api.dependencies import get_repository
     from audio_analyzer.api.routers.jobs import router
 

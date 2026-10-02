@@ -1,7 +1,7 @@
 import logging
 import os
 import time
-from typing import Optional
+
 from fastapi import HTTPException, Request
 
 logger = logging.getLogger(__name__)
@@ -20,14 +20,17 @@ class RedisRateLimiter:
     Hata Durumu: Redis erişilemezse fail-open çalışır ve uyarı logu basar.
     """
 
-    def __init__(self, redis_url: Optional[str] = None, rate_limit: Optional[int] = None, period_sec: Optional[int] = None):
+    def __init__(self, redis_url: str | None = None, rate_limit: int | None = None, period_sec: int | None = None):
         self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379/0")
         self.rate_limit = rate_limit
         self.period_sec = period_sec
 
     def _get_redis(self):
-        from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAdapter
         import redis.asyncio as aioredis
+
+        from audio_analyzer.adapters.messaging.redis_stream_adapter import (
+            RedisStreamAdapter,
+        )
         pool = RedisStreamAdapter.get_pool(self.redis_url)
         return aioredis.Redis(connection_pool=pool)
 
@@ -60,8 +63,11 @@ class RedisRateLimiter:
         redis_key = f"rate_limit:{identifier}:{current_minute}"
 
         try:
-            from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAdapter
             import redis.asyncio as aioredis
+
+            from audio_analyzer.adapters.messaging.redis_stream_adapter import (
+                RedisStreamAdapter,
+            )
 
             pool = RedisStreamAdapter.get_pool(self.redis_url)
             client = aioredis.Redis(connection_pool=pool)

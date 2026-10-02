@@ -1,17 +1,21 @@
 import asyncio
 import uuid
 from datetime import datetime, timezone
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from audio_analyzer.adapters.repository.models import Base
 from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
+from audio_analyzer.adapters.storage.in_memory_storage_adapter import (
+    InMemoryStorageAdapter,
+)
 from audio_analyzer.domain.models import AudioRecord, JobStatus, TranscriptUtterance
 from audio_analyzer.services.job_service import JobService
-from audio_analyzer.adapters.storage.in_memory_storage_adapter import InMemoryStorageAdapter
-from audio_analyzer.workers.sweeper import SweeperService
 from audio_analyzer.workers.stream_worker import RedisStreamWorker
+from audio_analyzer.workers.sweeper import SweeperService
+
 
 @pytest.fixture
 async def async_engine():

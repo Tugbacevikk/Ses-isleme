@@ -7,12 +7,11 @@ Worker başlangıcında veya model yüklemede tek bir noktadan:
 
 import logging
 import os
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-def setup_cpu_thread_budget(threads: Optional[int] = None) -> int:
+def setup_cpu_thread_budget(threads: int | None = None) -> int:
     """
     Tüm kütüphanelerin (Torch, OpenMP, MKL, OpenBLAS, faster-whisper)
     CPU thread sayılarını tek noktadan yapılandırır.

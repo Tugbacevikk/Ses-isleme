@@ -1,6 +1,8 @@
 import uuid
+
 from audio_analyzer.domain.models import TranscriptUtterance
 from audio_analyzer.services.semantic_refiner import SemanticRefiner
+
 
 def test_semantic_refiner_prevents_different_speaker_merge():
     refiner = SemanticRefiner()

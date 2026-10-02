@@ -1,10 +1,11 @@
 import logging
 import types
-import numpy as np
-import pytest
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+
 from audio_analyzer.adapters.audio.silero_vad import SileroVADProcessor
+
 
 def test_silero_vad_uses_package_get_speech_timestamps():
     processor = SileroVADProcessor(threshold=0.5)

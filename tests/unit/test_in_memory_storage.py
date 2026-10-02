@@ -1,12 +1,13 @@
-import uuid
 from unittest.mock import MagicMock
 
 import pytest
 
-from audio_analyzer.adapters.storage.in_memory_storage_adapter import InMemoryStorageAdapter
+from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
+from audio_analyzer.adapters.storage.in_memory_storage_adapter import (
+    InMemoryStorageAdapter,
+)
 from audio_analyzer.adapters.storage.s3_storage_adapter import S3StorageAdapter
 from audio_analyzer.adapters.storage.storage_factory import get_storage_adapter
-from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
 from audio_analyzer.domain.models import JobStatus
 from audio_analyzer.services.job_service import JobService
 

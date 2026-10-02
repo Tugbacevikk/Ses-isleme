@@ -1,9 +1,10 @@
 import logging
+import math
 import os
-from pathlib import Path
-from typing import Optional
 
 import numpy as np
+import scipy.signal
+
 from audio_analyzer.domain.interfaces import IAudioDenoiser
 
 logger = logging.getLogger(__name__)
@@ -13,9 +14,11 @@ class DeepFilterDenoiser(IAudioDenoiser):
     """
     DeepFilterNet tabanlı yerel gürültü temizleme adaptörü.
     Arka plandaki cızırtı, ortam ve klavye seslerini temizler.
+    DeepFilterNet dahili olarak 48kHz ses işlediğinden 16kHz ses verileri 48kHz'e
+    yükseltilir (upsample) ve işlem sonrası tekrar 16kHz'e düşürülür (downsample).
     """
 
-    def __init__(self, enabled: bool = True):
+    def __init__(self, enabled: bool = False):
         self.enabled = enabled
         self._df_model = None
         self._df_state = None
@@ -47,11 +50,12 @@ class DeepFilterDenoiser(IAudioDenoiser):
             from df.enhance import enhance, load_audio, save_audio
 
             logger.info("Ses dosyası gürültü temizleme işlemine alınıyor: %s", input_path)
-            audio, _ = load_audio(input_path, sr=self._df_state.sr())
+            target_sr = self._df_state.sr() if self._df_state else 48000
+            audio, sr = load_audio(input_path, sr=target_sr)
             enhanced = enhance(self._df_model, self._df_state, audio)
             
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            save_audio(output_path, enhanced, self._df_state.sr())
+            save_audio(output_path, enhanced, target_sr)
             logger.info("Temizlenmiş ses dosyası kaydedildi: %s", output_path)
             return output_path
         except Exception as ex:
@@ -59,7 +63,7 @@ class DeepFilterDenoiser(IAudioDenoiser):
             return input_path
 
     def denoise_array(self, audio_data: np.ndarray, sample_rate: int = 16000) -> np.ndarray:
-        """RAM üzerindeki NumPy ses dizisini (16kHz float32) 0-Disk I/O ile gürültüden arındırır."""
+        """RAM üzerindeki NumPy ses dizisini (16kHz float32) 48kHz'e resample edip gürültüden arındırır."""
         if not self.enabled or audio_data is None or len(audio_data) == 0:
             return audio_data
 
@@ -68,13 +72,32 @@ class DeepFilterDenoiser(IAudioDenoiser):
             return audio_data
 
         try:
-            import numpy as np
             import torch
             from df.enhance import enhance
 
-            audio_tensor = torch.from_numpy(audio_data).float().unsqueeze(0)
+            target_sr = self._df_state.sr() if self._df_state else 48000
+            
+            # 16kHz -> 48kHz Resampling (eğer farklıysa)
+            if sample_rate != target_sr:
+                gcd_val = math.gcd(int(sample_rate), target_sr)
+                audio_resampled = scipy.signal.resample_poly(
+                    audio_data, target_sr // gcd_val, int(sample_rate) // gcd_val
+                )
+            else:
+                audio_resampled = audio_data
+
+            audio_tensor = torch.from_numpy(audio_resampled).float().unsqueeze(0)
             enhanced_tensor = enhance(self._df_model, self._df_state, audio_tensor)
-            return enhanced_tensor.squeeze().cpu().numpy()
+            enhanced_array = enhanced_tensor.squeeze().cpu().numpy()
+
+            # 48kHz -> 16kHz (Orijinal hıza geri dönüş)
+            if sample_rate != target_sr:
+                gcd_val = math.gcd(int(sample_rate), target_sr)
+                enhanced_array = scipy.signal.resample_poly(
+                    enhanced_array, int(sample_rate) // gcd_val, target_sr // gcd_val
+                )
+
+            return enhanced_array
         except Exception as ex:
             logger.error("Denoise In-Memory işlemi sırasında hata oluştu (%s). Ham ses kullanılıyor.", ex)
             return audio_data

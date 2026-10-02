@@ -1,12 +1,8 @@
-from typing import List, Optional, Tuple
+import logging
+import os
 
 from audio_analyzer.domain.interfaces import ISTTEngine
 from audio_analyzer.domain.models import DeviceConfig, WordSegment
-
-
-import os
-
-import logging
 from audio_analyzer.utils.cpu_budget import setup_cpu_thread_budget
 
 logger = logging.getLogger(__name__)
@@ -21,8 +17,8 @@ class FasterWhisperAdapter(ISTTEngine):
     def __init__(
         self,
         model_size: str = "small",
-        device_config: Optional[DeviceConfig] = None,
-        initial_prompt: Optional[str] = None,
+        device_config: DeviceConfig | None = None,
+        initial_prompt: str | None = None,
     ):
         self.model_size = model_size
         self.device_config = device_config or DeviceConfig()
@@ -82,7 +78,7 @@ class FasterWhisperAdapter(ISTTEngine):
                     "faster-whisper kütüphanesi yüklü değil. 'pip install faster-whisper' çalıştırın."
                 )
 
-    def transcribe(self, audio_path: str) -> Tuple[List[WordSegment], Optional[str]]:
+    def transcribe(self, audio_path: str) -> tuple[list[WordSegment], str | None]:
         self._lazy_load_model()
         language = os.getenv("WHISPER_LANGUAGE", "tr")
         profile = os.getenv("PIPELINE_PROFILE", "full").lower()
@@ -133,8 +129,8 @@ class FasterWhisperAdapter(ISTTEngine):
                 vad_parameters=vad_params,
             )
 
-        words: List[WordSegment] = []
-        last_clean_words: List[str] = []
+        words: list[WordSegment] = []
+        last_clean_words: list[str] = []
 
         for segment in segments:
             if hasattr(segment, "words") and segment.words:

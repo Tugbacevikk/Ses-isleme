@@ -1,5 +1,6 @@
 import logging
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -7,7 +8,6 @@ load_dotenv()
 from fastapi import Depends
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
 
 from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
 from audio_analyzer.adapters.repository.unit_of_work import SqlAlchemyUnitOfWork
@@ -52,6 +52,7 @@ def create_async_db_engine(db_url: str):
         return eng
     else:
         import sys
+
         from sqlalchemy.pool import NullPool
 
         is_testing = os.getenv("TESTING", "false").lower() == "true" or "pytest" in sys.modules

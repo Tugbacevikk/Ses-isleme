@@ -1,10 +1,9 @@
-import os
 import subprocess
 import wave
 from pathlib import Path
-from typing import Tuple
 
 import numpy as np
+
 from audio_analyzer.domain.interfaces import IAudioProcessor
 
 
@@ -88,7 +87,6 @@ class AudioConverterProcessor(IAudioProcessor):
 
     def _convert_with_pyav(self, input_p: Path, output_p: Path, target_sample_rate: int) -> str:
         import av
-        import numpy as np
 
         container = av.open(str(input_p))
         audio_stream = next(s for s in container.streams if s.type == "audio")
@@ -114,9 +112,10 @@ class AudioConverterProcessor(IAudioProcessor):
 
     def convert_bytes_to_ndarray(
         self, file_bytes: bytes, target_sample_rate: int = 16000
-    ) -> Tuple[np.ndarray, int]:
+    ) -> tuple[np.ndarray, int]:
         """RAM üzerindeki ses baytlarını (0 Disk I/O) 16kHz float32 Mono NumPy dizisine dönüştürür."""
         import io
+
         import numpy as np
         import scipy.signal
         import soundfile as sf
@@ -135,12 +134,13 @@ class AudioConverterProcessor(IAudioProcessor):
                 sr = target_sample_rate
 
             return data.astype(np.float32), sr
-        except Exception as ex:
+        except Exception:
             return self._convert_bytes_with_pyav(file_bytes, target_sample_rate)
 
-    def _convert_bytes_with_pyav(self, file_bytes: bytes, target_sample_rate: int) -> Tuple[np.ndarray, int]:
-        import av
+    def _convert_bytes_with_pyav(self, file_bytes: bytes, target_sample_rate: int) -> tuple[np.ndarray, int]:
         import io
+
+        import av
         import numpy as np
 
         container = av.open(io.BytesIO(file_bytes))

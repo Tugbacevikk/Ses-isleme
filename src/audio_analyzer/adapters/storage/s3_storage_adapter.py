@@ -1,7 +1,6 @@
 import os
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from audio_analyzer.domain.interfaces import IAudioStorage
 
@@ -15,11 +14,11 @@ class S3StorageAdapter(IAudioStorage):
 
     def __init__(
         self,
-        bucket_name: Optional[str] = None,
-        aws_access_key_id: Optional[str] = None,
-        aws_secret_access_key: Optional[str] = None,
-        region_name: Optional[str] = None,
-        endpoint_url: Optional[str] = None,
+        bucket_name: str | None = None,
+        aws_access_key_id: str | None = None,
+        aws_secret_access_key: str | None = None,
+        region_name: str | None = None,
+        endpoint_url: str | None = None,
         local_cache_dir: str = "storage/cache",
     ):
         self.bucket_name = bucket_name or os.getenv("S3_BUCKET_NAME", "ses-analizi-storage")

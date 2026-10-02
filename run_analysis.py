@@ -57,7 +57,7 @@ async def main_async():
 
     # 1. Donanım Sezgisel Seçimi (GPU vs CPU)
     device_config = DeviceConfig()
-    print(f"\n[1/5] DONANIM VE CİHAZ YAPILANDIRMASI:")
+    print("\n[1/5] DONANIM VE CİHAZ YAPILANDIRMASI:")
     print(f"      - Algılanan Donanım (Device) : {device_config.device.upper()}")
     print(f"      - Hassasiyet (Compute Type)  : {device_config.compute_type}")
     print(f"      - GPU İndeksi               : {device_config.device_index}")
@@ -69,9 +69,9 @@ async def main_async():
         await conn.run_sync(Base.metadata.create_all)
     session_factory = async_sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, class_=AsyncSession)
     uow = SqlAlchemyUnitOfWork(session_factory=session_factory)
-    print(f"\n[2/5] VERİTABANI İŞLEMLERİ (Unit-of-Work):")
+    print("\n[2/5] VERİTABANI İŞLEMLERİ (Unit-of-Work):")
     print(f"      - Veritabanı URL           : {database_url}")
-    print(f"      - Veritabanı Tabloları      : audio_records, transcript_utterances [HAZIR]")
+    print("      - Veritabanı Tabloları      : audio_records, transcript_utterances [HAZIR]")
 
     # 3. Ses Dosyası Hazırlığı
     target_audio_file = "storage/raw/demo_sample.wav"
@@ -81,22 +81,24 @@ async def main_async():
         if not os.path.exists(target_audio_file):
             print(f"\n  [!] HATA: Belirtilen ses dosyası bulunamadı: {target_audio_file}")
             sys.exit(1)
-        print(f"\n[3/5] SES DOSYASI:")
+        print("\n[3/5] SES DOSYASI:")
         print(f"      - Kullanıcı Ses Dosyası     : {target_audio_file}")
     else:
-        print(f"\n[3/5] DEMO TEST MODU AKTİF:")
+        print("\n[3/5] DEMO TEST MODU AKTİF:")
         create_synthetic_wav(target_audio_file, duration_sec=3.0)
 
     with open(target_audio_file, "rb") as f:
         audio_bytes = f.read()
 
     # 4. Modül ve Adaptörlerin Başlatılması (Clean Architecture)
-    print(f"\n[4/5] SİSTEM ADAPTÖRLERİ BİRLEŞTİRİLİYOR (Clean Architecture):")
+    print("\n[4/5] SİSTEM ADAPTÖRLERİ BİRLEŞTİRİLİYOR (Clean Architecture):")
     storage = get_storage_adapter()
 
     # 4.1 STT Engine (FasterWhisper)
     try:
-        from audio_analyzer.adapters.stt.faster_whisper_adapter import FasterWhisperAdapter
+        from audio_analyzer.adapters.stt.faster_whisper_adapter import (
+            FasterWhisperAdapter,
+        )
         stt_engine = FasterWhisperAdapter(model_size="small", device_config=device_config)
         print("      - STT Engine (FasterWhisper): [GERÇEK GERÇEK ZAMANLI AI MODELİ AKTİF - Small Model]")
     except Exception as e:
@@ -105,11 +107,15 @@ async def main_async():
 
     # 4.2 Diarization Engine
     try:
-        from audio_analyzer.adapters.diarization.speechbrain_adapter import SpeechBrainECAPADiarizer
+        from audio_analyzer.adapters.diarization.speechbrain_adapter import (
+            SpeechBrainECAPADiarizer,
+        )
         diarizer = SpeechBrainECAPADiarizer(device_config=device_config)
         print("      - Diarizer                 : [SPEECHBRAIN ECAPA-TDNN DERİN SİNİR AĞI AKTİF (%100 ÇEVRİMDİŞİ)]")
     except Exception as e:
-        from audio_analyzer.adapters.diarization.cluster_diarizer import LocalSpectralClusterDiarizer
+        from audio_analyzer.adapters.diarization.cluster_diarizer import (
+            LocalSpectralClusterDiarizer,
+        )
         diarizer = LocalSpectralClusterDiarizer(device_config=device_config)
         print(f"      - Diarizer                 : [YEREL AKUSTİK KÜMELEYİCİ AKTİF - {e}]")
 
@@ -128,7 +134,7 @@ async def main_async():
     )
 
     # 5. Görev Oluşturma ve Yürütme (UnitOfWork Context Manager)
-    print(f"\n[5/5] SES ANALİZ GÖREVİ ÇALIŞTIRILIYOR (UoW):")
+    print("\n[5/5] SES ANALİZ GÖREVİ ÇALIŞTIRILIYOR (UoW):")
     filename = Path(target_audio_file).name
 
     async with uow:
@@ -141,7 +147,7 @@ async def main_async():
         job_id = await job_service.create_job(file_name=filename, file_bytes=audio_bytes)
         print(f"      - Oluşturulan İş ID (job_id): {job_id} [Durum: PENDING]")
 
-        print(f"      - Worker Görevi Yürütülüyor...")
+        print("      - Worker Görevi Yürütülüyor...")
         success = await job_service.execute_job(job_id)
 
         if success:

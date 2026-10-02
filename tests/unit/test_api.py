@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from audio_analyzer.api.main import app
 
+
 @pytest.fixture
 def client():
     with TestClient(app) as c:
@@ -83,16 +84,21 @@ def test_utterance_crud_flow(client):
     assert add_res.status_code == 200
     assert add_res.json()["status"] == "SUCCESS"
 
-    # 2. PUT /api/v1/jobs/{job_id}/utterances/0 (Kutu Guncelle)
+    # Fetch job to get utterance UUID
+    get_res = client.get(f"/api/v1/jobs/{job_id}")
+    assert get_res.status_code == 200
+    utt_id = get_res.json()["utterances"][0]["id"]
+
+    # 2. PUT /api/v1/jobs/{job_id}/utterances/{utt_id} (Kutu Guncelle)
     update_res = client.put(
-        f"/api/v1/jobs/{job_id}/utterances/0",
+        f"/api/v1/jobs/{job_id}/utterances/{utt_id}",
         json={"speaker_id": "SPEAKER_01", "text": "Guncellenmis metin"},
     )
     assert update_res.status_code == 200
     assert update_res.json()["status"] == "SUCCESS"
 
-    # 3. DELETE /api/v1/jobs/{job_id}/utterances/0 (Kutu Sil)
-    del_res = client.delete(f"/api/v1/jobs/{job_id}/utterances/0")
+    # 3. DELETE /api/v1/jobs/{job_id}/utterances/{utt_id} (Kutu Sil)
+    del_res = client.delete(f"/api/v1/jobs/{job_id}/utterances/{utt_id}")
     assert del_res.status_code == 200
     assert del_res.json()["status"] == "SUCCESS"
 

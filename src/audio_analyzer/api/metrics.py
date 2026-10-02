@@ -6,10 +6,15 @@ Kuyruk derinliği, bekleyen işler, aşama süreleri, DLQ ve webhook metriklerin
 import logging
 import os
 import time
-from typing import Optional
 
-from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from fastapi import APIRouter, Response
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,15 +60,32 @@ async def update_dynamic_gauges():
     # 1. Redis Stream XLEN & En Eski Mesaj Yaşı
     try:
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAdapter
         import redis.asyncio as aioredis
+
+        from audio_analyzer.adapters.messaging.redis_stream_adapter import (
+            RedisStreamAdapter,
+        )
 
         pool = RedisStreamAdapter.get_pool(redis_url)
         client = aioredis.Redis(connection_pool=pool)
 
         stream_key = os.getenv("STREAM_KEY", "audio_analysis_stream")
-        xlen = await client.xlen(stream_key)
-        QUEUE_DEPTH.set(xlen)
+        
+        total_depth = 0
+        try:
+            groups = await client.xinfo_groups(stream_key)
+            if groups:
+                for group in groups:
+                    g_dict = group if isinstance(group, dict) else {}
+                    lag = g_dict.get("lag", 0) or 0
+                    pending = g_dict.get("pending", 0) or 0
+                    total_depth += (lag + pending)
+            else:
+                total_depth = await client.xlen(stream_key)
+        except Exception:
+            total_depth = await client.xlen(stream_key)
+
+        QUEUE_DEPTH.set(total_depth)
 
         # En eski mesaj yaşı
         first_items = await client.xrange(stream_key, min="-", max="+", count=1)
@@ -81,7 +103,6 @@ async def update_dynamic_gauges():
     # 2. Veritabanı PENDING İş Sayısı
     try:
         from audio_analyzer.api.dependencies import get_uow
-        from audio_analyzer.domain.models import JobStatus
 
         async with get_uow() as uow:
             stale_pending = await uow.repository.get_stale_pending_records(stale_seconds=0, limit=10000)

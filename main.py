@@ -8,8 +8,9 @@ if src_dir not in sys.path:
 
 os.environ["PYTHONPATH"] = src_dir + os.pathsep + os.environ.get("PYTHONPATH", "")
 
-from audio_analyzer.api.main import app
 import uvicorn
+
+from audio_analyzer.api.main import app
 
 if __name__ == "__main__":
     if hasattr(sys.stdout, "reconfigure"):

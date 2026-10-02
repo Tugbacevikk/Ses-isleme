@@ -4,9 +4,9 @@ Bu betik, 2 farklı konuşmacının (Müşteri ve Temsilci) ses frekanslarını 
 6 saniyelik test ses dosyası üretir.
 """
 
-import wave
 import math
 import struct
+import wave
 from pathlib import Path
 
 

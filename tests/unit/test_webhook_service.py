@@ -1,4 +1,5 @@
 import pytest
+
 from audio_analyzer.services.webhook_service import WebhookService
 
 

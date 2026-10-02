@@ -2,7 +2,7 @@ import os
 import threading
 import uuid
 from collections import OrderedDict
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 from audio_analyzer.domain.interfaces import IAudioStorage
 
@@ -19,7 +19,7 @@ class InMemoryStorageAdapter(IAudioStorage):
     _total_bytes: ClassVar[int] = 0
     _lock: ClassVar[threading.Lock] = threading.Lock()
 
-    def __init__(self, max_items: int = 100000, max_bytes: Optional[int] = None):
+    def __init__(self, max_items: int = 100000, max_bytes: int | None = None):
         self.max_items = max_items
         if max_bytes is None:
             max_bytes = int(os.getenv("MEMORY_STORAGE_MAX_BYTES", str(512 * 1024 * 1024)))
@@ -42,8 +42,7 @@ class InMemoryStorageAdapter(IAudioStorage):
             ) and InMemoryStorageAdapter._storage:
                 pop_key, pop_bytes = InMemoryStorageAdapter._storage.popitem(last=False)
                 InMemoryStorageAdapter._total_bytes -= len(pop_bytes)
-                if InMemoryStorageAdapter._total_bytes < 0:
-                    InMemoryStorageAdapter._total_bytes = 0
+                InMemoryStorageAdapter._total_bytes = max(InMemoryStorageAdapter._total_bytes, 0)
 
         return storage_uri
 
@@ -64,7 +63,6 @@ class InMemoryStorageAdapter(IAudioStorage):
             if storage_uri in InMemoryStorageAdapter._storage:
                 pop_bytes = InMemoryStorageAdapter._storage.pop(storage_uri)
                 InMemoryStorageAdapter._total_bytes -= len(pop_bytes)
-                if InMemoryStorageAdapter._total_bytes < 0:
-                    InMemoryStorageAdapter._total_bytes = 0
+                InMemoryStorageAdapter._total_bytes = max(InMemoryStorageAdapter._total_bytes, 0)
                 return True
         return False

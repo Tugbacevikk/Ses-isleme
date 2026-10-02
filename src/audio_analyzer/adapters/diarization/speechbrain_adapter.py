@@ -1,8 +1,9 @@
 import logging
 import os
-from typing import List, Optional, Union
+from pathlib import Path
 
 import numpy as np
+import soundfile as sf
 import torch
 
 from audio_analyzer.adapters.audio.rust_dsp_adapter import RustAudioDSPProcessor
@@ -10,6 +11,19 @@ from audio_analyzer.domain.interfaces import IAudioProcessor, IDiarizer
 from audio_analyzer.domain.models import DeviceConfig, DiarizationSegment
 
 logger = logging.getLogger(__name__)
+
+
+def majority_vote_filter(labels: np.ndarray, kernel_size: int = 3) -> np.ndarray:
+    """Sayısal sıralı olmayan konuşmacı etiketleri (>2) için kayan pencere çoğunluk oyu (mode) filtresi."""
+    if len(labels) < kernel_size:
+        return labels
+    out = np.copy(labels)
+    half = kernel_size // 2
+    for i in range(half, len(labels) - half):
+        window = labels[i - half : i + half + 1]
+        vals, counts = np.unique(window, return_counts=True)
+        out[i] = vals[np.argmax(counts)]
+    return out
 
 
 class SpeechBrainECAPADiarizer(IDiarizer):
@@ -22,9 +36,9 @@ class SpeechBrainECAPADiarizer(IDiarizer):
     def __init__(
         self,
         device_config: DeviceConfig = None,
-        num_speakers: Optional[int] = None,
+        num_speakers: int | None = None,
         max_speakers: int = 10,
-        audio_processor: Optional[IAudioProcessor] = None,
+        audio_processor: IAudioProcessor | None = None,
     ):
         from audio_analyzer.config import get_settings
         settings = get_settings()
@@ -37,16 +51,22 @@ class SpeechBrainECAPADiarizer(IDiarizer):
     def _load_classifier(self):
         if self._classifier is None:
             import warnings
-            warnings.filterwarnings("ignore")
+            warnings.filterwarnings("ignore", category=UserWarning)
+            warnings.filterwarnings("ignore", category=FutureWarning)
             logging.getLogger("speechbrain").setLevel(logging.ERROR)
             logging.getLogger("speechbrain.utils.fetching").setLevel(logging.ERROR)
             logging.getLogger("speechbrain.utils.parameter_transfer").setLevel(logging.ERROR)
             logging.getLogger("speechbrain.utils.quirks").setLevel(logging.ERROR)
 
             from speechbrain.inference.speaker import EncoderClassifier
-            from pathlib import Path
 
-            spk_dir = Path(__file__).parent.parent.parent.parent / "storage" / "models" / "diarization" / "speechbrain_ecapa"
+            model_dir_env = os.getenv("MODEL_DIR")
+            if model_dir_env:
+                spk_dir = Path(model_dir_env) / "diarization" / "speechbrain_ecapa"
+            else:
+                project_root = Path(__file__).resolve().parent.parent.parent.parent.parent
+                spk_dir = project_root / "storage" / "models" / "diarization" / "speechbrain_ecapa"
+
             spk_dir.mkdir(parents=True, exist_ok=True)
 
             try:
@@ -62,14 +82,10 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                     run_opts={"device": self.device_config.device},
                 )
 
-    def diarize(self, audio_input: Union[str, np.ndarray]) -> List[DiarizationSegment]:
+    def diarize(self, audio_input: str | np.ndarray) -> list[DiarizationSegment]:
         try:
             self._load_classifier()
-            import scipy.signal
-            import soundfile as sf
-            from scipy.cluster.hierarchy import fcluster, linkage
             from scipy.signal import medfilt
-            from scipy.spatial.distance import pdist
 
             if isinstance(audio_input, np.ndarray):
                 data = audio_input
@@ -131,7 +147,6 @@ class SpeechBrainECAPADiarizer(IDiarizer):
 
             logger.info("SpeechBrain ECAPA Konuşmacı Ayrıştırma başlatılıyor (%d pencere segmenti işleniyor)...", len(valid_clips))
             for b_idx in range(0, len(valid_clips), batch_size):
-
                 b_chunk = valid_clips[b_idx : b_idx + batch_size]
                 batch_arr = np.array(b_chunk, dtype=np.float32)
                 tensor_batch = torch.tensor(batch_arr, dtype=torch.float32)
@@ -205,18 +220,25 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                 raw_labels[i] = last_lbl
 
             k_size = 3 if len(raw_labels) >= 3 else 1
-            final_labels = (
-                medfilt(raw_labels, kernel_size=k_size) if len(raw_labels) > 0 else raw_labels
-            )
+            unique_label_count = len(np.unique(raw_labels))
 
-            segments: List[DiarizationSegment] = []
+            if unique_label_count > 2:
+                final_labels = majority_vote_filter(raw_labels, kernel_size=k_size)
+            else:
+                final_labels = (
+                    medfilt(raw_labels, kernel_size=k_size) if len(raw_labels) > 0 else raw_labels
+                )
+
+            segments: list[DiarizationSegment] = []
             current_spk = f"SPEAKER_{final_labels[0]:02d}"
             start_t = 0.0
 
+            half_win = win_sec / 2.0
             for i in range(1, num_wins):
                 spk = f"SPEAKER_{final_labels[i]:02d}"
                 if spk != current_spk:
-                    end_t = i * step_sec
+                    # Segment sınırlarını pencere merkezine göre hesapla
+                    end_t = (i * step_sec) + half_win
                     segments.append(
                         DiarizationSegment(
                             speaker_id=current_spk, start_time=start_t, end_time=end_t
@@ -233,7 +255,7 @@ class SpeechBrainECAPADiarizer(IDiarizer):
             return segments
 
         except Exception as e:
-            logger.warning("SpeechBrainECAPADiarizer error, fallback: %s", e)
+            logger.error("SpeechBrainECAPADiarizer error, fallback: %s", e, exc_info=True)
             from audio_analyzer.adapters.diarization.cluster_diarizer import (
                 LocalSpectralClusterDiarizer,
             )
@@ -242,7 +264,6 @@ class SpeechBrainECAPADiarizer(IDiarizer):
             if isinstance(audio_input, str):
                 return fallback_diarizer.diarize(audio_input)
             else:
-                # If audio_input is array, create temporary audio file for spectral fallback
                 import tempfile
                 import uuid
                 tmp_path = os.path.join(tempfile.gettempdir(), f"diar_tmp_{uuid.uuid4().hex}.wav")

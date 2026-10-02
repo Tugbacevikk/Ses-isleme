@@ -8,7 +8,6 @@ olarak sınıflandırılmasını sağlar.
 class JobExecutionError(Exception):
     """Tüm analiz görevi hatalarının temel sınıfı."""
 
-    pass
 
 
 class PermanentJobError(JobExecutionError):
@@ -17,7 +16,6 @@ class PermanentJobError(JobExecutionError):
     Yeniden denenmez, doğrudan FAILED durumuna geçer ve DLQ'ya atılır.
     """
 
-    pass
 
 
 class TransientJobError(JobExecutionError):
@@ -26,7 +24,6 @@ class TransientJobError(JobExecutionError):
     Maksimum deneme sayısına (MAX_JOB_ATTEMPTS) kadar üstel backoff ile yeniden denenir.
     """
 
-    pass
 
 
 def is_transient_error(ex: Exception) -> bool:

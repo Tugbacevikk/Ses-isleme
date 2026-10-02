@@ -1,11 +1,10 @@
 import io
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-def is_valid_audio_content(file_bytes: bytes, filename: Optional[str] = None) -> bool:
+def is_valid_audio_content(file_bytes: bytes, filename: str | None = None) -> bool:
     """
     Yüklenen dosya baytlarının gerçek ve bozulmamış bir ses dosyası (WAV, MP3, FLAC, OGG, M4A)
     içeriği taşıyıp taşımadığını sihirli baytlar (magic numbers) ve ses çözücü (audio decoder)

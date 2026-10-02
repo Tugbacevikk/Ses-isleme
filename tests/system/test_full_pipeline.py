@@ -1,20 +1,20 @@
-from typing import List, Optional, Tuple
 
 import pytest
 
 from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
-from audio_analyzer.adapters.storage.in_memory_storage_adapter import InMemoryStorageAdapter
+from audio_analyzer.adapters.storage.in_memory_storage_adapter import (
+    InMemoryStorageAdapter,
+)
 from audio_analyzer.domain.interfaces import IDiarizer, ISTTEngine
 from audio_analyzer.domain.models import DiarizationSegment, WordSegment
 from audio_analyzer.services.job_service import JobService
 from audio_analyzer.services.pipeline import AudioAnalysisPipeline
 
 
-
 class MockSTTEngine(ISTTEngine):
     """Sistem testleri için taklit STT motoru."""
 
-    def transcribe(self, audio_path: str) -> Tuple[List[WordSegment], Optional[str]]:
+    def transcribe(self, audio_path: str) -> tuple[list[WordSegment], str | None]:
         words = [
             WordSegment(word="Alo", start_time=0.0, end_time=0.4),
             WordSegment(word="buyurun", start_time=0.5, end_time=0.9),
@@ -28,7 +28,7 @@ class MockSTTEngine(ISTTEngine):
 class MockDiarizer(IDiarizer):
     """Sistem testleri için taklit Diarization motoru."""
 
-    def diarize(self, audio_path: str) -> List[DiarizationSegment]:
+    def diarize(self, audio_path: str) -> list[DiarizationSegment]:
         return [
             DiarizationSegment(speaker_id="SPEAKER_00", start_time=0.0, end_time=0.95),
             DiarizationSegment(speaker_id="SPEAKER_01", start_time=0.98, end_time=2.6),

@@ -1,4 +1,3 @@
-from typing import List, Tuple
 
 import numpy as np
 
@@ -35,11 +34,11 @@ class RustAudioDSPProcessor(IAudioProcessor):
 
     def convert_bytes_to_ndarray(
         self, file_bytes: bytes, target_sample_rate: int = 16000
-    ) -> Tuple[np.ndarray, int]:
+    ) -> tuple[np.ndarray, int]:
         """RAM üzerindeki ses baytlarını (0 Disk I/O) 16kHz float32 Mono NumPy dizisine dönüştürür."""
         return self.fallback.convert_bytes_to_ndarray(file_bytes, target_sample_rate)
 
-    def fast_resample(self, pcm_signal: List[float], original_sr: int) -> List[float]:
+    def fast_resample(self, pcm_signal: list[float], original_sr: int) -> list[float]:
         """
         Rust hızında PCM sinyal resample işlemi.
         """
@@ -49,8 +48,9 @@ class RustAudioDSPProcessor(IAudioProcessor):
             # SciPy Polyphase Fallback
             if original_sr == 16000:
                 return pcm_signal
-            import scipy.signal
             from math import gcd
+
+            import scipy.signal
 
             arr = np.array(pcm_signal, dtype=np.float32)
             g = gcd(int(original_sr), 16000)
@@ -58,8 +58,8 @@ class RustAudioDSPProcessor(IAudioProcessor):
             return resampled.tolist()
 
     def fast_vad_energy(
-        self, pcm_signal: List[float], frame_size: int = 512, threshold: float = 0.02
-    ) -> List[bool]:
+        self, pcm_signal: list[float], frame_size: int = 512, threshold: float = 0.02
+    ) -> list[bool]:
         """
         Rust hızında Voice Activity Detection (VAD) RMS enerji tespiti.
         """
@@ -76,7 +76,7 @@ class RustAudioDSPProcessor(IAudioProcessor):
                 results.append(bool(rms >= threshold))
             return results
 
-    def fast_cosine_similarity(self, vec_a: List[float], vec_b: List[float]) -> float:
+    def fast_cosine_similarity(self, vec_a: list[float], vec_b: list[float]) -> float:
         """
         Rust hızında Konuşmacı Vektörü Kosinüs Benzerliği.
         """

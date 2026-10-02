@@ -49,9 +49,9 @@ async def test_postgres_repository_crud_flow(in_memory_db):
 
 @pytest.mark.integration
 async def test_init_engine_fallback_behavior(monkeypatch):
-    from audio_analyzer.api.dependencies import init_engine, create_async_db_engine
-    from audio_analyzer.api.main import lifespan, app
     from audio_analyzer.api import dependencies
+    from audio_analyzer.api.dependencies import create_async_db_engine, init_engine
+    from audio_analyzer.api.main import app, lifespan
 
     invalid_url = "postgresql://invalid_user:invalid_pass@localhost:9999/non_existent_db"
     monkeypatch.setenv("DATABASE_URL", invalid_url)

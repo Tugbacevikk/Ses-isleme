@@ -3,21 +3,19 @@ import os
 import warnings
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 # Windows SYMLINK ve SpeechBrain önbellek uyarılarını bastır
 warnings.filterwarnings("ignore", category=UserWarning)
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from audio_analyzer.adapters.repository.models import Base
 from audio_analyzer.api import dependencies, metrics
 from audio_analyzer.api.routers import jobs
-
-from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
@@ -30,7 +28,7 @@ logging.getLogger("speechbrain.utils.fetching").setLevel(logging.ERROR)
 logging.getLogger("speechbrain.utils.parameter_transfer").setLevel(logging.ERROR)
 
 logger = logging.getLogger("audio_analyzer.api.main")
-def get_cors_config(allowed_origins_raw: Optional[str] = None) -> Tuple[List[str], bool]:
+def get_cors_config(allowed_origins_raw: str | None = None) -> tuple[list[str], bool]:
     if allowed_origins_raw is None:
         allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "")
     origins = [o.strip() for o in allowed_origins_raw.split(",") if o.strip()]
@@ -57,7 +55,9 @@ async def lifespan(app: FastAPI):
         if not webhook_secret:
             raise ValueError("Üretim ortamında (APP_ENV!=development) WEBHOOK_SECRET tanımlanması zorunludur!")
 
-    from audio_analyzer.adapters.storage.storage_factory import assert_storage_shared_across_processes
+    from audio_analyzer.adapters.storage.storage_factory import (
+        assert_storage_shared_across_processes,
+    )
 
     assert_storage_shared_across_processes()
 
@@ -204,8 +204,11 @@ async def readiness_check():
     # 2. Redis Kontrolü
     try:
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAdapter
         import redis.asyncio as aioredis
+
+        from audio_analyzer.adapters.messaging.redis_stream_adapter import (
+            RedisStreamAdapter,
+        )
 
         pool = RedisStreamAdapter.get_pool(redis_url)
         client = aioredis.Redis(connection_pool=pool)

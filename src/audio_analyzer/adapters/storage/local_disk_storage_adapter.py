@@ -2,7 +2,6 @@ import os
 import re
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from audio_analyzer.domain.interfaces import IAudioStorage
 
@@ -14,7 +13,7 @@ class LocalDiskStorageAdapter(IAudioStorage):
     Path traversal saldırılarına karşı tam korumalıdır.
     """
 
-    def __init__(self, base_dir: Optional[str] = None):
+    def __init__(self, base_dir: str | None = None):
         if base_dir is None:
             base_dir = os.getenv("STORAGE_DIR", "storage/raw")
         self.base_dir = Path(base_dir).resolve()

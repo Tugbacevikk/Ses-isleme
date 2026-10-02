@@ -1,5 +1,4 @@
 import uuid
-from typing import List, Optional
 
 from audio_analyzer.domain.models import (
     DiarizationSegment,
@@ -21,8 +20,8 @@ class FusionEngine:
         self.max_silence_threshold = max_silence_threshold
 
     def align(
-        self, words: List[WordSegment], diarization_segments: List[DiarizationSegment]
-    ) -> List[TranscriptUtterance]:
+        self, words: list[WordSegment], diarization_segments: list[DiarizationSegment]
+    ) -> list[TranscriptUtterance]:
         """
         Kelime seviyesindeki STT çıktılarını konuşmacı aralıklarıyla IoU ve Midpoint kurallarına göre eşler.
         """
@@ -49,7 +48,7 @@ class FusionEngine:
         return self._normalize_speaker_ids(raw_utterances)
 
     def _find_best_speaker_for_word(
-        self, word: WordSegment, diarization_segments: List[DiarizationSegment]
+        self, word: WordSegment, diarization_segments: list[DiarizationSegment]
     ) -> str:
         # 1. Kelimenin orta noktası hangi segmente düşüyorsa öncelikli olarak o konuşmacıyı ata
         for seg in diarization_segments:
@@ -72,14 +71,14 @@ class FusionEngine:
         return best_speaker
 
     def _group_words_into_utterances(
-        self, attributed_words: List[tuple[WordSegment, str]]
-    ) -> List[TranscriptUtterance]:
-        utterances: List[TranscriptUtterance] = []
+        self, attributed_words: list[tuple[WordSegment, str]]
+    ) -> list[TranscriptUtterance]:
+        utterances: list[TranscriptUtterance] = []
         if not attributed_words:
             return utterances
 
         current_speaker = attributed_words[0][1]
-        current_words: List[WordSegment] = [attributed_words[0][0]]
+        current_words: list[WordSegment] = [attributed_words[0][0]]
 
         for word, speaker in attributed_words[1:]:
             last_word = current_words[-1]
@@ -104,10 +103,10 @@ class FusionEngine:
 
         return utterances
 
-    def _create_utterance(self, speaker_id: str, words: List[WordSegment]) -> TranscriptUtterance:
+    def _create_utterance(self, speaker_id: str, words: list[WordSegment]) -> TranscriptUtterance:
         start_time = words[0].start_time
         end_time = words[-1].end_time
-        text = " ".join(w.word for w in words).strip()
+        text = " ".join(w.word.strip() for w in words if w.word and w.word.strip()).strip()
         return TranscriptUtterance(
             id=uuid.uuid4(),
             speaker_id=speaker_id,
@@ -117,14 +116,14 @@ class FusionEngine:
         )
 
     def _build_single_speaker_utterances(
-        self, words: List[WordSegment], speaker_id: str
-    ) -> List[TranscriptUtterance]:
+        self, words: list[WordSegment], speaker_id: str
+    ) -> list[TranscriptUtterance]:
         attributed = [(w, speaker_id) for w in words]
         return self._group_words_into_utterances(attributed)
 
     def _smooth_attributed_words(
-        self, attributed_words: List[tuple[WordSegment, str]]
-    ) -> List[tuple[WordSegment, str]]:
+        self, attributed_words: list[tuple[WordSegment, str]]
+    ) -> list[tuple[WordSegment, str]]:
         if len(attributed_words) < 3:
             return attributed_words
 
@@ -141,8 +140,8 @@ class FusionEngine:
         return smoothed
 
     def _normalize_speaker_ids(
-        self, utterances: List[TranscriptUtterance]
-    ) -> List[TranscriptUtterance]:
+        self, utterances: list[TranscriptUtterance]
+    ) -> list[TranscriptUtterance]:
         """
         Gözlemlenme (kronolojik ses sırası) önceliğine göre konuşmacı isimlerini
         düzenli biçimde SPEAKER_00, SPEAKER_01, SPEAKER_02... olarak yeniden sıralar.

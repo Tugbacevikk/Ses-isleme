@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional
 
 try:
     import torch
@@ -86,7 +85,7 @@ class TranscriptUtterance(BaseModel):
 class OverlapSegment(BaseModel):
     """İki veya daha fazla konuşmacının aynı anda konuştuğu zaman aralığı."""
 
-    speakers: List[str]
+    speakers: list[str]
     start_time: float
     end_time: float
     duration: float
@@ -98,30 +97,30 @@ class OverlapSummary(BaseModel):
     total_overlap_seconds: float = 0.0
     overlap_percentage: float = 0.0
     interrupt_count: int = 0
-    overlaps: List[OverlapSegment] = Field(default_factory=list)
+    overlaps: list[OverlapSegment] = Field(default_factory=list)
 
 
 class AudioRecord(BaseModel):
     """Ses kaydı domain varlığı."""
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
-    external_id: Optional[str] = None
+    external_id: str | None = None
     storage_uri: str
     file_name: str
-    duration_seconds: Optional[float] = None
+    duration_seconds: float | None = None
     sample_rate: int = 16000
     channels: int = 1
-    language: Optional[str] = None
+    language: str | None = None
     status: JobStatus = JobStatus.PENDING
-    error_message: Optional[str] = None
-    callback_url: Optional[str] = None
-    webhook_status: Optional[str] = None
+    error_message: str | None = None
+    callback_url: str | None = None
+    webhook_status: str | None = None
     attempts: int = 0
-    processing_started_at: Optional[datetime] = None
-    last_error_at: Optional[datetime] = None
-    overlap_summary: Optional[OverlapSummary] = None
+    processing_started_at: datetime | None = None
+    last_error_at: datetime | None = None
+    overlap_summary: OverlapSummary | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    utterances: List[TranscriptUtterance] = Field(default_factory=list)
+    utterances: list[TranscriptUtterance] = Field(default_factory=list)
 
 

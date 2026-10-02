@@ -1,5 +1,4 @@
 import logging
-from typing import List, Tuple, Union
 
 import numpy as np
 import soundfile as sf
@@ -38,8 +37,8 @@ class SileroVADProcessor(IVADProcessor):
                 self._get_speech_timestamps_fn = None
 
     def get_speech_timestamps(
-        self, audio_input: Union[str, np.ndarray], min_silence_duration_ms: int = 400
-    ) -> List[Tuple[float, float]]:
+        self, audio_input: str | np.ndarray, min_silence_duration_ms: int = 400
+    ) -> list[tuple[float, float]]:
         """
         Ses verisini (dosya yolu veya RAM tamponu) analiz eder ve konuşma aralıklarını döner.
         """
@@ -53,8 +52,9 @@ class SileroVADProcessor(IVADProcessor):
             data = np.mean(data, axis=1)
 
         if sr != 16000:
-            import scipy.signal
             from math import gcd
+
+            import scipy.signal
 
             g = gcd(int(sr), 16000)
             data = scipy.signal.resample_poly(data, 16000 // g, int(sr) // g)
@@ -84,7 +84,7 @@ class SileroVADProcessor(IVADProcessor):
 
     def _energy_vad_chunking(
         self, data: np.ndarray, sr: int, min_silence_ms: int
-    ) -> List[Tuple[float, float]]:
+    ) -> list[tuple[float, float]]:
         frame_ms = 30
         frame_samples = int(sr * frame_ms / 1000)
         num_frames = len(data) // frame_samples
@@ -101,7 +101,7 @@ class SileroVADProcessor(IVADProcessor):
         is_speech = [e > thresh for e in energies]
 
         min_silence_frames = max(1, int(min_silence_ms / frame_ms))
-        speech_chunks: List[Tuple[float, float]] = []
+        speech_chunks: list[tuple[float, float]] = []
 
         in_speech = False
         start_frame = 0

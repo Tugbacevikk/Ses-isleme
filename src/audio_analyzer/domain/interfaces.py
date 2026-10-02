@@ -1,6 +1,6 @@
 import uuid
 from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple
+from datetime import datetime
 
 from audio_analyzer.domain.models import (
     AudioRecord,
@@ -17,22 +17,18 @@ class IAudioStorage(ABC):
     @abstractmethod
     def save(self, file_bytes: bytes, file_name: str) -> str:
         """Ses dosyasını depolar ve benzersiz bir storage_uri döner."""
-        pass
 
     @abstractmethod
     def get_path(self, storage_uri: str) -> str:
         """storage_uri'den yerel erişilebilir dosya yolunu döner."""
-        pass
 
     @abstractmethod
     def get_bytes(self, storage_uri: str) -> bytes:
         """storage_uri'den ses verisini fiziksel diske yazmadan doğrudan RAM bayt akışı olarak döner."""
-        pass
 
     @abstractmethod
     def delete(self, storage_uri: str) -> bool:
         """Ses dosyasını depolamadan siler."""
-        pass
 
 
 class IWebhookOutboxRepository(ABC):
@@ -41,19 +37,16 @@ class IWebhookOutboxRepository(ABC):
     @abstractmethod
     async def create_webhook_delivery(self, job_id: uuid.UUID, url: str, payload: str) -> uuid.UUID:
         """Outbox deseni için webhook teslimat kaydı oluşturur."""
-        pass
 
     @abstractmethod
-    async def get_due_webhook_deliveries(self, limit: int = 50) -> List[dict]:
+    async def get_due_webhook_deliveries(self, limit: int = 50) -> list[dict]:
         """Teslimat zamanı gelmiş PENDING durumdaki webhook kayıtlarını getirir."""
-        pass
 
     @abstractmethod
     async def update_webhook_delivery_status(
-        self, delivery_id: uuid.UUID, status: str, attempts: int, next_attempt_at: Optional[object] = None, error_message: Optional[str] = None
+        self, delivery_id: uuid.UUID, status: str, attempts: int, next_attempt_at: object | None = None, error_message: str | None = None
     ) -> bool:
         """Webhook teslimat durumunu günceller."""
-        pass
 
 
 class ITranscriptRepository(IWebhookOutboxRepository, ABC):
@@ -62,32 +55,27 @@ class ITranscriptRepository(IWebhookOutboxRepository, ABC):
     @abstractmethod
     async def save_record(self, record: AudioRecord) -> AudioRecord:
         """Yeni bir ses kaydı meta verisini veritabanına ekler."""
-        pass
 
     @abstractmethod
-    async def get_record_by_id(self, record_id: uuid.UUID) -> Optional[AudioRecord]:
+    async def get_record_by_id(self, record_id: uuid.UUID) -> AudioRecord | None:
         """ID'ye göre ses kaydı ve zaman damgalı konuşmacı metinlerini getirir."""
-        pass
 
     @abstractmethod
-    async def get_record_by_external_id(self, external_id: str) -> Optional[AudioRecord]:
+    async def get_record_by_external_id(self, external_id: str) -> AudioRecord | None:
         """Dış sistem ID'sine (external_id) göre ses kaydını getirir (Idempotency tespiti)."""
-        pass
 
 
     @abstractmethod
     async def claim_job_atomically(
         self, record_id: uuid.UUID, stale_seconds: int = 1800
-    ) -> Tuple[bool, Optional[AudioRecord], bool]:
+    ) -> tuple[bool, AudioRecord | None, bool]:
         """İşi atomik olarak PENDING -> PROCESSING yapar (claimed, record, is_completed döner)."""
-        pass
 
     @abstractmethod
     async def update_status(
-        self, record_id: uuid.UUID, status: JobStatus, error_message: Optional[str] = None
+        self, record_id: uuid.UUID, status: JobStatus, error_message: str | None = None
     ) -> bool:
         """İş durumunu (PENDING, PROCESSING, COMPLETED, FAILED) günceller."""
-        pass
 
     @abstractmethod
     async def handle_job_failure(
@@ -96,79 +84,83 @@ class ITranscriptRepository(IWebhookOutboxRepository, ABC):
         error_message: str,
         is_transient: bool = True,
         max_attempts: int = 3,
-    ) -> Tuple[int, bool]:
+    ) -> tuple[int, bool]:
         """İş hatasını kaydeder, attempts artırır ve durumu (FAILED veya PENDING) belirler."""
-        pass
 
     @abstractmethod
-    async def get_stale_pending_records(self, stale_seconds: int = 300, limit: int = 50) -> List[AudioRecord]:
+    async def get_stale_pending_records(self, stale_seconds: int = 300, limit: int = 50) -> list[AudioRecord]:
         """PENDING durumunda bekleyen bayat kayıtları getirir."""
-        pass
 
     @abstractmethod
-    async def get_stale_processing_records(self, stale_seconds: int = 1800, limit: int = 50) -> List[AudioRecord]:
+    async def get_stale_processing_records(self, stale_seconds: int = 1800, limit: int = 50) -> list[AudioRecord]:
         """PROCESSING durumunda kalmış bayat kayıtları getirir."""
-        pass
 
     @abstractmethod
     async def reset_record_to_pending(self, record_id: uuid.UUID) -> bool:
         """Kayıt durumunu tekrar PENDING yapar."""
-        pass
 
     @abstractmethod
     async def save_utterances(
         self,
         record_id: uuid.UUID,
-        utterances: List[TranscriptUtterance],
-        language: Optional[str] = None,
+        utterances: list[TranscriptUtterance],
+        language: str | None = None,
     ) -> bool:
         """Analiz sonucu oluşan konuşmacı metinlerini kaydedip durumu COMPLETED yapar."""
-        pass
 
     @abstractmethod
     async def complete_job(
         self,
         record_id: uuid.UUID,
-        claim_token: Optional[object],
-        utterances: List[TranscriptUtterance],
-        language: Optional[str] = None,
-        overlap_summary: Optional[object] = None,
-        webhook_payload: Optional[str] = None,
+        claim_token: object | None,
+        utterances: list[TranscriptUtterance],
+        language: str | None = None,
+        overlap_summary: object | None = None,
+        webhook_payload: str | None = None,
     ) -> bool:
         """Kayıt durumunu COMPLETED yapar, mevcut utterance'ları temizleyip yenilerini atomik ekler ve outbox kaydı oluşturur."""
-        pass
 
     @abstractmethod
-    async def touch_processing(self, record_id: uuid.UUID, claim_token: Optional[object]) -> bool:
+    async def touch_processing(self, record_id: uuid.UUID, claim_token: object | None) -> bool:
         """PROCESSING durumundaki işin updated_at zamanını günceller (Heartbeat)."""
-        pass
 
     @abstractmethod
     async def update_utterance(
         self, record_id: uuid.UUID, utterance_index: int, speaker_id: str, text: str
     ) -> bool:
         """Belirtilen indeksteki konuşmacı ve metin bilgisini günceller."""
-        pass
+
+    @abstractmethod
+    async def update_utterance_by_id(
+        self, record_id: uuid.UUID, utterance_id: uuid.UUID, speaker_id: str, text: str
+    ) -> bool:
+        """Utterance UUID'sine göre konuşmacı ve metin bilgisini günceller."""
 
     @abstractmethod
     async def delete_utterance(self, record_id: uuid.UUID, utterance_index: int) -> bool:
         """Belirtilen indeksteki konuşmacı bloğunu siler."""
-        pass
+
+    @abstractmethod
+    async def delete_utterance_by_id(self, record_id: uuid.UUID, utterance_id: uuid.UUID) -> bool:
+        """Utterance UUID'sine göre konuşmacı bloğunu siler."""
 
     @abstractmethod
     async def add_utterance(self, record_id: uuid.UUID, utterance: TranscriptUtterance) -> bool:
         """Ses kaydına yeni bir konuşmacı bloğu ekler."""
-        pass
 
     @abstractmethod
-    async def list_records(self, skip: int = 0, limit: int = 20) -> List[AudioRecord]:
+    async def list_records(self, skip: int = 0, limit: int = 20) -> list[AudioRecord]:
         """Tüm ses kayıtlarını tarihe göre tersten sıralı ve sayfalamalı getirir."""
-        pass
+
+    @abstractmethod
+    async def get_expired_records(
+        self, before: datetime, statuses: list[JobStatus] | None = None, limit: int = 100
+    ) -> list[AudioRecord]:
+        """Süresi dolmuş (created_at < before) eski kayıtları created_at ASC sırasıyla getirir (utterance'lar yüklenmeden)."""
 
     @abstractmethod
     async def delete_record(self, record_id: uuid.UUID) -> bool:
         """Ses kaydını ve bağlı tüm konuşmacı metinlerini veritabanından siler."""
-        pass
 
 
 class IUnitOfWork(ABC):
@@ -187,33 +179,29 @@ class IUnitOfWork(ABC):
     @abstractmethod
     async def commit(self):
         """Transaction değişikliklerini veritabanına kaydeder."""
-        pass
 
     @abstractmethod
     async def rollback(self):
         """Hata durumunda transaction değişikliklerini geri alır."""
-        pass
 
 
 class ISTTEngine(ABC):
     """Speech-to-Text Motor Arayüzü (Whisper vb.)."""
 
     @abstractmethod
-    def transcribe(self, audio_path: str) -> Tuple[List[WordSegment], Optional[str]]:
+    def transcribe(self, audio_path: str) -> tuple[list[WordSegment], str | None]:
         """
         Ses dosyasını işleyip kelime seviyesinde zaman damgalı segmentler ve tespit edilen dili döner.
         Returns: (List[WordSegment], detected_language)
         """
-        pass
 
 
 class IDiarizer(ABC):
     """Speaker Diarization Motor Arayüzü (PyAnnote vb.)."""
 
     @abstractmethod
-    def diarize(self, audio_path: str) -> List[DiarizationSegment]:
+    def diarize(self, audio_path: str) -> list[DiarizationSegment]:
         """Ses dosyasını işleyip konuşmacı zaman aralıklarını döner."""
-        pass
 
 
 class IAudioProcessor(ABC):
@@ -224,7 +212,6 @@ class IAudioProcessor(ABC):
         self, input_path: str, output_path: str, target_sample_rate: int = 16000
     ) -> str:
         """Gelen sesi 16kHz Mono WAV formatına dönüştürür ve normalize eder."""
-        pass
 
 
 class IVADProcessor(ABC):
@@ -233,12 +220,11 @@ class IVADProcessor(ABC):
     @abstractmethod
     def get_speech_timestamps(
         self, audio_path: str, min_silence_duration_ms: int = 400
-    ) -> List[Tuple[float, float]]:
+    ) -> list[tuple[float, float]]:
         """
         Ses dosyasındaki konuşma aralıklarını (start_sec, end_sec) döner.
         Cümle sonu sessizlik noktalarından tam parçalama sağlar.
         """
-        pass
 
 
 class IAudioDenoiser(ABC):
@@ -249,5 +235,4 @@ class IAudioDenoiser(ABC):
         """
         Ses dosyasındaki arka plan gürültülerini temizler ve çıktı dosya yolunu döner.
         """
-        pass
 

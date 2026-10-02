@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from audio_analyzer.api.main import app
 from audio_analyzer.utils.file_validator import is_valid_audio_content
 
+
 @pytest.fixture
 def client():
     with TestClient(app) as c:

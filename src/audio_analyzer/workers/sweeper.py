@@ -15,13 +15,10 @@ import logging
 import os
 import signal
 import uuid
-from typing import Optional
 
 from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAdapter
-from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
 from audio_analyzer.adapters.repository.unit_of_work import SqlAlchemyUnitOfWork
 from audio_analyzer.api.dependencies import AsyncSessionLocal
-from audio_analyzer.domain.models import JobStatus
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +26,7 @@ logger = logging.getLogger(__name__)
 class SweeperService:
     def __init__(
         self,
-        adapter: Optional[RedisStreamAdapter] = None,
+        adapter: RedisStreamAdapter | None = None,
         lock_name: str = "sweeper_lock",
         lock_ttl_sec: int = 60,
     ):
@@ -128,7 +125,7 @@ class SweeperService:
                     else:
                         # Maksimum deneme aşıldı -> FAILED yap, DLQ'ya aktar ve Transactional Outbox'a yaz
                         err_msg = f"Job processing timed out after {processing_stale_sec}s (stale processing)"
-                        attempts, is_final = await repo.handle_job_failure(
+                        attempts, _is_final = await repo.handle_job_failure(
                             record.id,
                             error_message=err_msg,
                             is_transient=False,
@@ -160,6 +157,19 @@ class SweeperService:
                             record.id,
                             attempts,
                         )
+
+            # (c) Retention Cleanup: Eski ses dosyaları ve eski veritabanı kayıtları temizliği
+            try:
+                from audio_analyzer.adapters.storage.storage_factory import (
+                    create_storage,
+                )
+                from audio_analyzer.services.retention_service import RetentionService
+                storage = create_storage()
+                retention_svc = RetentionService(storage=storage, repository=repo)
+                await retention_svc.cleanup_expired_audio_files()
+                await retention_svc.cleanup_old_database_records()
+            except Exception as ret_err:
+                logger.warning("Sweeper: Retention temizliği uyarısı: %s", ret_err)
 
     async def run(self):
         """Sweeper ana döngüsü."""

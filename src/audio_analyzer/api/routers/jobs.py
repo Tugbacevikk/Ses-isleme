@@ -4,19 +4,28 @@ import os
 import secrets
 import uuid
 from pathlib import Path
-from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import FileResponse, Response
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
 from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAdapter
 from audio_analyzer.adapters.storage.storage_factory import get_storage_adapter
-from audio_analyzer.api.dependencies import SessionLocal, get_repository, get_uow
+from audio_analyzer.api.dependencies import get_repository, get_uow
 from audio_analyzer.api.rate_limiter import rate_limiter
 from audio_analyzer.domain.interfaces import ITranscriptRepository
-from audio_analyzer.domain.models import JobStatus, OverlapSummary, TranscriptUtterance
+from audio_analyzer.domain.models import OverlapSummary, TranscriptUtterance
 from audio_analyzer.services.job_service import JobService
 from audio_analyzer.utils.file_validator import is_valid_audio_content
 
@@ -30,7 +39,7 @@ MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB
 
 
 
-async def verify_api_key(api_key: Optional[str] = Depends(api_key_header)):
+async def verify_api_key(api_key: str | None = Depends(api_key_header)):
     """
     İsteğin X-API-Key başlığını doğrular. Ortam değişkeninde API_KEY tanımlıysa kontrol eder.
     Tanımlı değilse APP_ENV=development haricinde erişimi engeller.
@@ -75,6 +84,7 @@ class JobCreateResponse(BaseModel):
 
 
 class UtteranceResponse(BaseModel):
+    id: uuid.UUID | None = None
     speaker_id: str
     start_time: float
     end_time: float
@@ -85,10 +95,10 @@ class JobStatusResponse(BaseModel):
     job_id: str
     file_name: str
     status: str
-    language: Optional[str] = None
-    error_message: Optional[str] = None
-    overlap_summary: Optional[OverlapSummary] = None
-    utterances: List[UtteranceResponse] = []
+    language: str | None = None
+    error_message: str | None = None
+    overlap_summary: OverlapSummary | None = None
+    utterances: list[UtteranceResponse] = []
 
 
 class UtteranceUpdateRequest(BaseModel):
@@ -102,19 +112,16 @@ class UtteranceCreateRequest(BaseModel):
     end_time: float
     text: str
 
-
-from audio_analyzer.api.rate_limiter import rate_limiter
-
 # --- Endpoints ---
 @router.post("/analyze", response_model=JobCreateResponse, status_code=202)
 async def upload_and_analyze_audio(
     request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    callback_url: Optional[str] = Form(None),
-    external_id: Optional[str] = Form(None),
+    callback_url: str | None = Form(None),
+    external_id: str | None = Form(None),
     repository: ITranscriptRepository = Depends(get_repository),
-    _api_key: Optional[str] = Depends(verify_api_key),
+    _api_key: str | None = Depends(verify_api_key),
 ):
     """
     Ses dosyasını yükler, validasyondan geçirir, PENDING durumuyla kaydeder
@@ -205,12 +212,12 @@ async def upload_and_analyze_audio(
     )
 
 
-@router.get("/jobs", response_model=List[JobStatusResponse])
+@router.get("/jobs", response_model=list[JobStatusResponse])
 async def list_jobs(
     skip: int = Query(0, ge=0, description="Atlanacak kayıt sayısı"),
     limit: int = Query(20, ge=1, le=100, description="Getirilecek maksimum kayıt sayısı"),
     repository: ITranscriptRepository = Depends(get_repository),
-    _api_key: Optional[str] = Depends(verify_api_key),
+    _api_key: str | None = Depends(verify_api_key),
 ):
     """
     Geçmişte yüklenen tüm ses analizi görevlerini tarihe göre tersten sıralı (en yeni en üstte)
@@ -226,6 +233,7 @@ async def list_jobs(
             error_message=r.error_message,
             utterances=[
                 UtteranceResponse(
+                    id=u.id,
                     speaker_id=u.speaker_id,
                     start_time=u.start_time,
                     end_time=u.end_time,
@@ -233,6 +241,7 @@ async def list_jobs(
                 )
                 for u in r.utterances
             ],
+            overlap_summary=r.overlap_summary,
         )
         for r in records
     ]
@@ -242,7 +251,7 @@ async def list_jobs(
 async def get_job_status(
     job_id: str,
     repository: ITranscriptRepository = Depends(get_repository),
-    _api_key: Optional[str] = Depends(verify_api_key),
+    _api_key: str | None = Depends(verify_api_key),
 ):
     """
     Verilen job_id görevinin durumunu ve analiz sonuçlarını getirir.
@@ -259,6 +268,7 @@ async def get_job_status(
 
     utterances = [
         UtteranceResponse(
+            id=u.id,
             speaker_id=u.speaker_id,
             start_time=u.start_time,
             end_time=u.end_time,
@@ -273,6 +283,7 @@ async def get_job_status(
         status=record.status.value,
         language=record.language,
         error_message=record.error_message,
+        overlap_summary=record.overlap_summary,
         utterances=utterances,
     )
 
@@ -281,7 +292,7 @@ async def get_job_status(
 async def get_job_audio_file(
     job_id: str,
     repository: ITranscriptRepository = Depends(get_repository),
-    _api_key: Optional[str] = Depends(verify_api_key),
+    _api_key: str | None = Depends(verify_api_key),
 ):
     """
     Ses analizi görevine ait ham ses dosyasını tarayıcıda dinlenmek üzere sunar (Streaming / Audio Player).
@@ -329,7 +340,7 @@ async def get_job_audio_file(
 async def delete_job(
     job_id: str,
     repository: ITranscriptRepository = Depends(get_repository),
-    _api_key: Optional[str] = Depends(verify_api_key),
+    _api_key: str | None = Depends(verify_api_key),
 ):
     """
     Tüm ses analizi görevini, ilişkili veritabanı kayıtlarını ve fiziksel ses dosyasını siler.
@@ -356,13 +367,13 @@ async def delete_job(
     return {"status": "SUCCESS", "message": "Ses analizi kaydı ve dosyası başarıyla silindi."}
 
 
-@router.put("/jobs/{job_id}/utterances/{utterance_index}")
+@router.put("/jobs/{job_id}/utterances/{utterance_id}")
 async def update_utterance_speaker(
     job_id: str,
-    utterance_index: int,
+    utterance_id: uuid.UUID,
     req: UtteranceUpdateRequest,
     repository: ITranscriptRepository = Depends(get_repository),
-    _api_key: Optional[str] = Depends(verify_api_key),
+    _api_key: str | None = Depends(verify_api_key),
 ):
     """
     Kullanıcının Arayüzden (UI) manuel olarak konuşmacı etiketini veya metni değiştirmesini sağlar.
@@ -372,9 +383,9 @@ async def update_utterance_speaker(
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    success = await repository.update_utterance(
+    success = await repository.update_utterance_by_id(
         record_id=record_uuid,
-        utterance_index=utterance_index,
+        utterance_id=utterance_id,
         speaker_id=req.speaker_id,
         text=req.text,
     )
@@ -384,37 +395,22 @@ async def update_utterance_speaker(
     return {"status": "SUCCESS", "message": "Konuşmacı etiketi başarıyla güncellendi."}
 
 
-@router.delete("/jobs/{job_id}/utterances/{utterance_index}")
+@router.delete("/jobs/{job_id}/utterances/{utterance_id}")
 async def delete_utterance(
     job_id: str,
-    utterance_index: str,
+    utterance_id: uuid.UUID,
     repository: ITranscriptRepository = Depends(get_repository),
-    _api_key: Optional[str] = Depends(verify_api_key),
+    _api_key: str | None = Depends(verify_api_key),
 ):
     """
-    Kullanıcının Arayüzden (UI) seçtiği konuşmacı kartını/kutusunu silmesini sağlar (UUID veya İndeks ile).
+    Kullanıcının Arayüzden (UI) seçtiği konuşmacı kartını/kutusunu silmesini sağlar.
     """
     try:
         record_uuid = uuid.UUID(job_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Geçersiz UUID formatı.")
 
-    success = False
-    # Önce UUID olarak silmeyi dene
-    try:
-        utt_uuid = uuid.UUID(utterance_index)
-        if hasattr(repository, "delete_utterance_by_id"):
-            success = await repository.delete_utterance_by_id(record_uuid, utt_uuid)
-    except ValueError:
-        pass
-
-    # UUID değilse veya bulunamadıysa tamsayı indeksi olarak sil
-    if not success:
-        try:
-            idx = int(utterance_index)
-            success = await repository.delete_utterance(record_id=record_uuid, utterance_index=idx)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Geçersiz indeks veya UUID formatı.")
+    success = await repository.delete_utterance_by_id(record_uuid, utterance_id)
 
     if not success:
         raise HTTPException(status_code=404, detail="Silinecek cümle bulunamadı.")
@@ -427,7 +423,7 @@ async def create_utterance(
     job_id: str,
     req: UtteranceCreateRequest,
     repository: ITranscriptRepository = Depends(get_repository),
-    _api_key: Optional[str] = Depends(verify_api_key),
+    _api_key: str | None = Depends(verify_api_key),
 ):
     """
     Kullanıcının Arayüzden (UI) yeni bir konuşmacı kartı/kutusu eklemesini sağlar.

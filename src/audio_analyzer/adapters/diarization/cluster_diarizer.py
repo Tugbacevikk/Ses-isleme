@@ -1,5 +1,4 @@
 import logging
-from typing import List
 
 import numpy as np
 
@@ -57,7 +56,7 @@ class LocalSpectralClusterDiarizer(IDiarizer):
 
         num_frames = 1 + int(np.ceil((signal_length - frame_len) / frame_step))
         pad_signal_length = (num_frames - 1) * frame_step + frame_len
-        z = np.zeros((pad_signal_length - signal_length))
+        z = np.zeros(pad_signal_length - signal_length)
         pad_signal = np.append(signal, z)
 
         indices = (
@@ -148,7 +147,7 @@ class LocalSpectralClusterDiarizer(IDiarizer):
 
         return labels
 
-    def diarize(self, audio_path: str) -> List[DiarizationSegment]:
+    def diarize(self, audio_path: str) -> list[DiarizationSegment]:
         try:
             import os
             import wave
@@ -164,7 +163,9 @@ class LocalSpectralClusterDiarizer(IDiarizer):
                     signal = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
             except Exception:
                 # WAV dışında (MP3, M4A vb.) ses dosyalarını PyAV ile otomatik 16kHz WAV yap
-                from audio_analyzer.adapters.audio.audio_converter import AudioConverterProcessor
+                from audio_analyzer.adapters.audio.audio_converter import (
+                    AudioConverterProcessor,
+                )
 
                 processor = AudioConverterProcessor()
                 temp_wav = f"{audio_path}.temp_diarize.wav"
@@ -251,7 +252,7 @@ class LocalSpectralClusterDiarizer(IDiarizer):
                 medfilt(gated_labels, kernel_size=k_size) if len(gated_labels) > 0 else gated_labels
             )
 
-            segments: List[DiarizationSegment] = []
+            segments: list[DiarizationSegment] = []
             current_spk = f"SPEAKER_{final_labels[0]:02d}"
             start_t = 0.0
 

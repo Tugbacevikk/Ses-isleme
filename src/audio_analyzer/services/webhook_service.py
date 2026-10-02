@@ -3,8 +3,7 @@ import hmac
 import json
 import logging
 import time
-import urllib.request
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,7 @@ class WebhookService:
     _sync_client = None
     _async_client = None
 
-    def __init__(self, secret_key: Optional[str] = None):
+    def __init__(self, secret_key: str | None = None):
         from audio_analyzer.config import get_settings
 
         settings = get_settings()
@@ -54,7 +53,7 @@ class WebhookService:
                 return None
         return cls._async_client
 
-    def generate_signature(self, timestamp_str: Any, body_str: Optional[str] = None) -> str:
+    def generate_signature(self, timestamp_str: Any, body_str: str | None = None) -> str:
         """
         Payload veri bütünlüğünü ve zaman damgasını garanti etmek için HMAC-SHA256 imzası üretir.
         Format: sha256=HMAC(secret, f"{timestamp}.{body}")
@@ -73,7 +72,7 @@ class WebhookService:
             elif isinstance(body_str, dict):
                 body_str = json.dumps(body_str, ensure_ascii=False, separators=(",", ":"))
 
-        signature_data = f"{timestamp_str}.{body_str}".encode("utf-8")
+        signature_data = f"{timestamp_str}.{body_str}".encode()
         raw_hmac = hmac.new(
             self.secret_key.encode("utf-8"), signature_data, hashlib.sha256
         ).hexdigest()
@@ -82,7 +81,7 @@ class WebhookService:
     def send_callback(
         self,
         callback_url: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         max_retries: int = 3,
         backoff_factor: float = 1.0,
     ) -> bool:
@@ -114,7 +113,7 @@ class WebhookService:
     async def send_callback_async(
         self,
         callback_url: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         max_retries: int = 3,
         backoff_factor: float = 1.0,
     ) -> bool:

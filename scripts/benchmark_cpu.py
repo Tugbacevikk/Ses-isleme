@@ -13,18 +13,16 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 # Project root path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import soundfile as sf
-import numpy as np
 
 
 def measure_pipeline_stages(
     audio_path: str, model_size: str, profile: str, threads: int
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Tek bir ses dosyası için pipeline aşamalarının sürelerini ve ses uzunluğunu ölçer."""
     os.environ["WHISPER_MODEL_SIZE"] = model_size
     os.environ["PIPELINE_PROFILE"] = profile
@@ -33,13 +31,14 @@ def measure_pipeline_stages(
     from audio_analyzer.adapters.audio.audio_converter import AudioConverterProcessor
     from audio_analyzer.adapters.audio.denoiser import DeepFilterDenoiser
     from audio_analyzer.adapters.audio.silero_vad import SileroVADProcessor
-    from audio_analyzer.adapters.diarization.speechbrain_adapter import SpeechBrainECAPADiarizer
+    from audio_analyzer.adapters.diarization.speechbrain_adapter import (
+        SpeechBrainECAPADiarizer,
+    )
     from audio_analyzer.adapters.stt.faster_whisper_adapter import FasterWhisperAdapter
     from audio_analyzer.domain.models import DeviceConfig
     from audio_analyzer.services.fusion_engine import FusionEngine
-    from audio_analyzer.services.overlap_detector import OverlapDetector
-    from audio_analyzer.services.semantic_refiner import SemanticRefiner
     from audio_analyzer.services.pipeline import estimate_snr_db
+    from audio_analyzer.services.semantic_refiner import SemanticRefiner
 
     device_config = DeviceConfig()
     stt_engine = FasterWhisperAdapter(model_size=model_size, device_config=device_config)
@@ -142,7 +141,7 @@ def measure_pipeline_stages(
     }
 
 
-def run_benchmark(audio_paths: List[str], models: List[str], profiles: List[str], threads: int):
+def run_benchmark(audio_paths: list[str], models: list[str], profiles: list[str], threads: int):
     """Verilen sesler, modeller ve profiller için benchmark matrisini çalıştırır ve sonuçları tablo basar."""
     print("=======================================================================================")
     print("                    CPU PERFORMANS & BENCHMARK SONUÇLARI")
@@ -228,7 +227,7 @@ def main():
     args = parser.parse_args()
 
     path = Path(args.audio_dir)
-    audio_paths: List[str] = []
+    audio_paths: list[str] = []
 
     if path.is_file():
         audio_paths.append(str(path))

@@ -1,9 +1,8 @@
 import logging
 import os
-from typing import Dict, List, Optional, Tuple
+from typing import Any
 
 import redis.asyncio as aioredis
-from redis.exceptions import ResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +16,14 @@ class RedisStreamAdapter:
     Saniyede 5.000+ eşzamanlı isteği 100+ worker arasında key contention olmadan sıfır çakışmayla dağıtır.
     """
 
-    _pool: Optional[aioredis.ConnectionPool] = None
+    _pool: aioredis.ConnectionPool | None = None
 
     def __init__(
         self,
-        redis_url: Optional[str] = None,
+        redis_url: str | None = None,
         stream_key: str = DEFAULT_STREAM_KEY,
         group_name: str = DEFAULT_GROUP_NAME,
-        redis_client: Optional[aioredis.Redis] = None,
+        redis_client: aioredis.Redis | None = None,
     ):
         self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379/0")
         self.stream_key = stream_key
@@ -53,7 +52,7 @@ class RedisStreamAdapter:
         self,
         job_id: str,
         file_name: str,
-        callback_url: Optional[str] = None,
+        callback_url: str | None = None,
         max_len: int = 100000,
     ) -> str:
         """
@@ -61,7 +60,7 @@ class RedisStreamAdapter:
         Non-blocking asenkron I/O kullanır.
         """
         client = self.get_client()
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "job_id": str(job_id),
             "file_name": str(file_name),
             "callback_url": str(callback_url) if callback_url else "",
@@ -106,7 +105,7 @@ class RedisStreamAdapter:
         consumer_name: str,
         count: int = 10,
         block_ms: int = 2000,
-    ) -> List[Tuple[str, Dict[str, str]]]:
+    ) -> list[tuple[str, dict[str, str]]]:
         """
         Tüketici Grubu (Consumer Group) üzerinden okunmamış mesajları çeker (`XREADGROUP`).
         100+ Worker düğümü aynı grubun parçası olarak sıfır çakışmayla mesajları paylaşır.
@@ -121,7 +120,7 @@ class RedisStreamAdapter:
             block=block_ms,
         )
 
-        messages: List[Tuple[str, Dict[str, str]]] = []
+        messages: list[tuple[str, dict[str, str]]] = []
         if response and isinstance(response, list):
             for stream_item in response:
                 if isinstance(stream_item, (tuple, list)) and len(stream_item) >= 2:
@@ -148,7 +147,7 @@ class RedisStreamAdapter:
         consumer_name: str,
         min_idle_time_ms: int = 60000,
         count: int = 10,
-    ) -> List[Tuple[str, Dict[str, str]]]:
+    ) -> list[tuple[str, dict[str, str]]]:
         """
         Çöken worker'ların yarım kalan mesajlarını (Orphan/Pending entries) devralır (`XAUTOCLAIM`).
         `min_idle_time_ms` süresince yanıt alınamayan mesajlar aktif worker'a yeniden atanır.
@@ -226,7 +225,7 @@ class RedisStreamAdapter:
         )
         return str(msg_id)
 
-    async def get_consumer_group_lag(self) -> Optional[int]:
+    async def get_consumer_group_lag(self) -> int | None:
         """
         Redis Consumer Group'un tüketilmemiş mesaj sayısını (lag) döner.
         Grup bulunamazsa veya lag desteği yoksa None döner.

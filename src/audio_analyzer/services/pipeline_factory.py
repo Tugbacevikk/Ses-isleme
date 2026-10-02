@@ -1,10 +1,7 @@
 import logging
-import os
-from typing import Optional
 
-from audio_analyzer.config import get_settings
-from audio_analyzer.adapters.audio.audio_converter import AudioConverterProcessor
 from audio_analyzer.adapters.audio.silero_vad import SileroVADProcessor
+from audio_analyzer.config import get_settings
 from audio_analyzer.domain.models import DeviceConfig
 from audio_analyzer.services.fusion_engine import FusionEngine
 from audio_analyzer.services.pipeline import AudioAnalysisPipeline
@@ -12,7 +9,7 @@ from audio_analyzer.services.semantic_refiner import SemanticRefiner
 
 logger = logging.getLogger(__name__)
 
-_cached_pipeline: Optional[AudioAnalysisPipeline] = None
+_cached_pipeline: AudioAnalysisPipeline | None = None
 
 
 def reset_pipeline_cache():
@@ -41,7 +38,9 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
 
     # 1. STT Engine (FasterWhisper)
     try:
-        from audio_analyzer.adapters.stt.faster_whisper_adapter import FasterWhisperAdapter
+        from audio_analyzer.adapters.stt.faster_whisper_adapter import (
+            FasterWhisperAdapter,
+        )
 
         stt_engine = FasterWhisperAdapter(
             model_size=whisper_model_size, device_config=device_config
@@ -53,18 +52,20 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
 
 
     # 2. Diarization Engine (%100 Yerel ve İnternetsiz Token-Free Diarizasyon)
-    from audio_analyzer.adapters.diarization.speechbrain_adapter import SpeechBrainECAPADiarizer
+    from audio_analyzer.adapters.diarization.speechbrain_adapter import (
+        SpeechBrainECAPADiarizer,
+    )
 
     diarizer = SpeechBrainECAPADiarizer(
         device_config=device_config, num_speakers=settings.target_num_speakers
     )
 
-    from audio_analyzer.adapters.audio.rust_dsp_adapter import RustAudioDSPProcessor
     from audio_analyzer.adapters.audio.denoiser import DeepFilterDenoiser
+    from audio_analyzer.adapters.audio.rust_dsp_adapter import RustAudioDSPProcessor
 
     audio_processor = RustAudioDSPProcessor()
     vad_processor = SileroVADProcessor()
-    enable_denoiser = os.getenv("ENABLE_DENOISER", "true").lower() == "true"
+    enable_denoiser = settings.enable_denoiser
     denoiser = DeepFilterDenoiser(enabled=enable_denoiser)
 
     # 3. Modelleri sunucu açılışında belleğe ısındır (Warm-Up & Pre-Load)

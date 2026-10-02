@@ -1,8 +1,10 @@
-from typing import List, Optional, Tuple
 
 import pytest
+
 from audio_analyzer.adapters.audio.audio_converter import AudioConverterProcessor
-from audio_analyzer.adapters.diarization.speechbrain_adapter import SpeechBrainECAPADiarizer
+from audio_analyzer.adapters.diarization.speechbrain_adapter import (
+    SpeechBrainECAPADiarizer,
+)
 from audio_analyzer.domain.interfaces import ISTTEngine
 from audio_analyzer.domain.models import WordSegment
 from audio_analyzer.services.pipeline import AudioAnalysisPipeline
@@ -10,7 +12,7 @@ from audio_analyzer.utils.audio_io import create_synthetic_wav_bytes
 
 
 class InlineMockSTTEngine(ISTTEngine):
-    def transcribe(self, audio_path: str) -> Tuple[List[WordSegment], Optional[str]]:
+    def transcribe(self, audio_path: str) -> tuple[list[WordSegment], str | None]:
         return [
             WordSegment(word="Test", start_time=0.1, end_time=0.5),
             WordSegment(word="konuşma", start_time=0.6, end_time=1.2),

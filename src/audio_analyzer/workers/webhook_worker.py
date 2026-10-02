@@ -15,8 +15,6 @@ Kullanım:
 """
 
 import asyncio
-import hashlib
-import hmac
 import logging
 import os
 import signal
@@ -24,7 +22,6 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -38,7 +35,7 @@ load_dotenv()
 logger = logging.getLogger("webhook_worker")
 
 # Per-host semaphores for rate limiting per domain
-_host_semaphores: Dict[str, asyncio.Semaphore] = {}
+_host_semaphores: dict[str, asyncio.Semaphore] = {}
 
 
 def get_host_semaphore(url: str, max_concurrent: int) -> asyncio.Semaphore:
@@ -48,7 +45,7 @@ def get_host_semaphore(url: str, max_concurrent: int) -> asyncio.Semaphore:
     return _host_semaphores[netloc]
 
 
-def sign_payload(payload_str: str, secret: str, timestamp_str: Optional[str] = None) -> str:
+def sign_payload(payload_str: str, secret: str, timestamp_str: str | None = None) -> str:
     """Payload ve timestamp verisini HMAC SHA256 ile imzalar."""
     from audio_analyzer.services.webhook_service import WebhookService
 
@@ -56,7 +53,7 @@ def sign_payload(payload_str: str, secret: str, timestamp_str: Optional[str] = N
     return svc.generate_signature(timestamp_str, payload_str)
 
 
-async def deliver_single_webhook(delivery: dict, engine, max_attempts: int, timeout_sec: float, host_concurrency: int, secret: Optional[str]) -> bool:
+async def deliver_single_webhook(delivery: dict, engine, max_attempts: int, timeout_sec: float, host_concurrency: int, secret: str | None) -> bool:
     """Tek bir webhook teslimatını gerçekleştirir."""
     delivery_id = delivery["id"]
     url = delivery["url"]

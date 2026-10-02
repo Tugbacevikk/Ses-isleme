@@ -3,11 +3,10 @@ import logging
 import os
 import socket
 import urllib.parse
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-def validate_callback_url(url: Optional[str]) -> bool:
+def validate_callback_url(url: str | None) -> bool:
     """
     Callback URL'yi SSRF (Server-Side Request Forgery) saldırılarına karşı doğrular.
     - Sadece https kabul edilir (http yalnızca APP_ENV=development iken izinlidir).

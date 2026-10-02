@@ -1,5 +1,4 @@
 import uuid
-from typing import Any, Dict, List, Optional
 
 from audio_analyzer.domain.models import TranscriptUtterance
 
@@ -14,14 +13,15 @@ class SemanticRefiner:
 
     def __init__(
         self,
-        domain_mode: Optional[str] = None,
-        use_llm: Optional[bool] = None,
-        ollama_url: Optional[str] = None,
-        model_name: Optional[str] = None,
-        custom_triggers: Optional[Dict[str, List[str]]] = None,
-        split_on_questions: Optional[bool] = None,
+        domain_mode: str | None = None,
+        use_llm: bool | None = None,
+        ollama_url: str | None = None,
+        model_name: str | None = None,
+        custom_triggers: dict[str, list[str]] | None = None,
+        split_on_questions: bool | None = None,
     ):
         import os
+
         from audio_analyzer.config import get_settings
 
         settings = get_settings()
@@ -36,8 +36,8 @@ class SemanticRefiner:
         )
 
         # Varsayılan genel amaçlı modda alan tetikleyicileri boştur (domain-agnostic).
-        self.agent_triggers: List[str] = []
-        self.customer_triggers: List[str] = []
+        self.agent_triggers: list[str] = []
+        self.customer_triggers: list[str] = []
 
         # Yalnızca çağrı merkezi veya özel bir alan seçildiğinde kuralları yükle
         if self.domain_mode == "call_center":
@@ -62,7 +62,7 @@ class SemanticRefiner:
             self.agent_triggers.extend(custom_triggers.get("agent_triggers", []))
             self.customer_triggers.extend(custom_triggers.get("customer_triggers", []))
 
-    def _query_ollama_llm(self, prompt: str) -> Optional[str]:
+    def _query_ollama_llm(self, prompt: str) -> str | None:
         """
         Yerel Ollama LLM servisine (Llama-3.2 / Qwen-2.5) istek atarak anlamsal analiz yaptırır.
         Ollama erişilebilir değilse None döner.
@@ -85,7 +85,7 @@ class SemanticRefiner:
         except Exception:
             return None
 
-    def refine(self, utterances: List[TranscriptUtterance]) -> List[TranscriptUtterance]:
+    def refine(self, utterances: list[TranscriptUtterance]) -> list[TranscriptUtterance]:
         """
         Utterance listesini anlamsal cümle, hizalama ve tekrar temizliği kontrolüne sokar.
         """
@@ -93,7 +93,7 @@ class SemanticRefiner:
             return []
 
         # 0. Halüsinatif kelime/sözcük grubu tekrarlarını ve imla hatalarını temizle
-        cleaned_utterances: List[TranscriptUtterance] = []
+        cleaned_utterances: list[TranscriptUtterance] = []
         for u in utterances:
             cleaned_txt = self._clean_repetitive_text(u.text)
             cleaned_txt = self._normalize_turkish_text(cleaned_txt)
@@ -115,7 +115,7 @@ class SemanticRefiner:
                 return llm_result
 
         # 2. Alan odaklı (domain_mode) kural tetikleyicileri tanımlıysa bölme kurallarını uygula
-        refined: List[TranscriptUtterance] = []
+        refined: list[TranscriptUtterance] = []
         for utt in utterances:
             if self.agent_triggers or self.customer_triggers:
                 split_result = self._split_if_role_transition(utt)
@@ -123,7 +123,7 @@ class SemanticRefiner:
                 split_result = [utt]
 
             # Soru işareti sonrası diyalog ve konuşmacı dönüşümlerini ayrıştır
-            dialogue_split: List[TranscriptUtterance] = []
+            dialogue_split: list[TranscriptUtterance] = []
             for item in split_result:
                 dialogue_split.extend(self._split_dialogue_turns(item))
 
@@ -139,7 +139,7 @@ class SemanticRefiner:
 
     def _split_dialogue_turns(
         self, utt: TranscriptUtterance
-    ) -> List[TranscriptUtterance]:
+    ) -> list[TranscriptUtterance]:
         """
         Diyalog kiti: Tek bir konuşmacı kartına birleştirilmiş olan
         soru-cevap ve diyalog cümlelerini ('?' işareti ve takip eden cümleler)
@@ -159,7 +159,7 @@ class SemanticRefiner:
         if len(parts) <= 2:
             return [utt]
 
-        segments: List[str] = []
+        segments: list[str] = []
         i = 0
         while i < len(parts):
             seg_text = parts[i].strip()
@@ -180,7 +180,7 @@ class SemanticRefiner:
         total_chars = max(len(text), 1)
         total_duration = utt.end_time - utt.start_time
 
-        result: List[TranscriptUtterance] = []
+        result: list[TranscriptUtterance] = []
         current_time = utt.start_time
 
         spk_0 = utt.speaker_id
@@ -209,46 +209,74 @@ class SemanticRefiner:
 
     def _clean_repetitive_text(self, text: str) -> str:
         """
-        "bu sefer, bu sefer, bu sefer..." gibi tekrarlayan sözcük ve kelime öbeklerini temizler.
+        Ardışık 3 veya daha fazla olan halüsinatif kelime ve kelime öbeği tekrarlarını temizler.
+        "yavaş yavaş", "evet evet", "güzel güzel" gibi 2'li ikilemelere dokunmaz.
         """
         if not text:
             return text
 
         words = text.strip().split()
-        if len(words) >= 4:
+        if not words:
+            return text
+
+        # 1. Ardışık 3+ kelime öbeği tekrarlarını temizle (örn: "bu sefer bu sefer bu sefer bu sefer" -> "bu sefer")
+        if len(words) >= 6:
             new_words = []
             i = 0
             while i < len(words):
-                if i + 3 < len(words) and [w.lower() for w in words[i:i+2]] == [w.lower() for w in words[i+2:i+4]]:
-                    new_words.extend(words[i:i+2])
-                    target = [w.lower() for w in words[i:i+2]]
-                    i += 4
-                    while i + 1 < len(words) and [w.lower() for w in words[i:i+2]] == target:
-                        i += 2
-                elif i + 1 < len(words) and words[i].lower() == words[i+1].lower():
+                if i + 5 < len(words):
+                    p1 = [w.lower() for w in words[i:i+2]]
+                    p2 = [w.lower() for w in words[i+2:i+4]]
+                    p3 = [w.lower() for w in words[i+4:i+6]]
+                    if p1 == p2 == p3:
+                        new_words.extend(words[i:i+2])
+                        i += 6
+                        while i + 1 < len(words) and [w.lower() for w in words[i:i+2]] == p1:
+                            i += 2
+                        continue
+                new_words.append(words[i])
+                i += 1
+            words = new_words
+
+        # 2. Ardışık 3+ tekil kelimeleri temizle (2'li ikilemelere dokunma)
+        if len(words) >= 3:
+            new_words = []
+            i = 0
+            while i < len(words):
+                j = i
+                while j < len(words) and words[j].lower() == words[i].lower():
+                    j += 1
+                repeat_count = j - i
+                if repeat_count >= 3:
                     new_words.append(words[i])
-                    target = words[i].lower()
-                    i += 2
-                    while i < len(words) and words[i].lower() == target:
-                        i += 1
                 else:
-                    new_words.append(words[i])
-                    i += 1
-            text = " ".join(new_words)
+                    new_words.extend(words[i:j])
+                i = j
+            words = new_words
+
+        text = " ".join(words)
 
         parts = [p.strip() for p in text.split(",") if p.strip()]
         if parts:
             cleaned_parts = []
-            for p in parts:
-                if not cleaned_parts or p.lower() != cleaned_parts[-1].lower():
-                    cleaned_parts.append(p)
+            i = 0
+            while i < len(parts):
+                j = i
+                while j < len(parts) and parts[j].lower() == parts[i].lower():
+                    j += 1
+                repeat_count = j - i
+                if repeat_count >= 3:
+                    cleaned_parts.append(parts[i])
+                else:
+                    cleaned_parts.extend(parts[i:j])
+                i = j
             text = ", ".join(cleaned_parts)
 
         return text
 
     def _normalize_turkish_text(self, text: str) -> str:
         """
-        Türkçe harf, imla ve birleşik kelime hatalarını (örn: "Şarşamba" -> "Çarşamba", "çarşambagünü" -> "Çarşamba günü", "mi ?" -> "mi?") otomatik düzeltir.
+        Türkçe imla ve birleşik kelime hatalarını (örn: "mi ?" -> "mi?") otomatik düzeltir.
         """
         if not text:
             return text
@@ -258,20 +286,6 @@ class SemanticRefiner:
         # Soru işaretleri ve noktalamalardan önceki boşlukları temizle ("mi ?" -> "mi?")
         text = re.sub(r'\s+([\?\!\,\.\:\;])', r'\1', text)
 
-        # Sık rastlanan fonetik imla ve harf hataları
-        corrections = {
-            r'\bŞarşamba\b': 'Çarşamba',
-            r'\bşarşamba\b': 'çarşamba',
-            r'\bçarşambagünü\b': 'çarşamba günü',
-            r'\bÇarşambagünü\b': 'Çarşamba günü',
-            r'\bperşembegünü\b': 'perşembe günü',
-            r'\bcumagünü\b': 'cuma günü',
-            r'\bpazartesigünü\b': 'pazartesi günü',
-            r'\bsalıgünü\b': 'salı günü',
-        }
-        for pattern, repl in corrections.items():
-            text = re.sub(pattern, repl, text)
-
         # Birleşik gün isimlerini ayır
         days = ["pazartesi", "salı", "çarşamba", "perşembe", "cuma", "cumartesi", "pazar"]
         for day in days:
@@ -280,8 +294,8 @@ class SemanticRefiner:
         return text
 
     def _refine_with_llm(
-        self, utterances: List[TranscriptUtterance]
-    ) -> Optional[List[TranscriptUtterance]]:
+        self, utterances: list[TranscriptUtterance]
+    ) -> list[TranscriptUtterance] | None:
         """
         Ollama LLM kullanarak diyalog bloklarını anlamsal olarak gözden geçirir.
         """
@@ -294,7 +308,7 @@ class SemanticRefiner:
         # LLM yanıtı geldiyse logla, aksi halde None dönüp varsayılana düşer
         return None if not response else utterances
 
-    def _split_if_role_transition(self, utt: TranscriptUtterance) -> List[TranscriptUtterance]:
+    def _split_if_role_transition(self, utt: TranscriptUtterance) -> list[TranscriptUtterance]:
         text = utt.text.strip()
         text_lower = text.lower()
 
@@ -338,8 +352,8 @@ class SemanticRefiner:
         return [utt]
 
     def _lock_opening_greetings(
-        self, utterances: List[TranscriptUtterance]
-    ) -> List[TranscriptUtterance]:
+        self, utterances: list[TranscriptUtterance]
+    ) -> list[TranscriptUtterance]:
         """
         Çağrı merkezi açılış selamlama cümlelerini (ilk 12 saniye içindeki 'buyurun', 'müşteri hizmetleri',
         'nasıl yardımcı olabilirim' vb.) tek bir temsilci (SPEAKER_00) kartına kilitler ve birleştirir.
@@ -384,8 +398,8 @@ class SemanticRefiner:
         return utterances
 
     def _normalize_short_gaps(
-        self, utterances: List[TranscriptUtterance]
-    ) -> List[TranscriptUtterance]:
+        self, utterances: list[TranscriptUtterance]
+    ) -> list[TranscriptUtterance]:
         """
         Aynı konuşmacının 0.6 saniyeden kısa aralıklı parçalanmış cümlelerini ve
         noktalama ile bitmemiş yarım cümleleri (mid-sentence split) tek bir konuşmacı kartında birleştirir.
@@ -398,7 +412,7 @@ class SemanticRefiner:
         max_silence_threshold = float(os.getenv("MAX_SILENCE_THRESHOLD", "1.5"))
         max_clause_gap = float(os.getenv("MAX_CLAUSE_GAP", "1.5"))
 
-        merged: List[TranscriptUtterance] = []
+        merged: list[TranscriptUtterance] = []
         i = 0
         while i < len(utterances):
             curr = utterances[i]

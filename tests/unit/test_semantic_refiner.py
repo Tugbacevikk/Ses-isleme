@@ -1,7 +1,5 @@
 import uuid
 
-import pytest
-
 from audio_analyzer.domain.models import TranscriptUtterance
 from audio_analyzer.services.semantic_refiner import SemanticRefiner
 

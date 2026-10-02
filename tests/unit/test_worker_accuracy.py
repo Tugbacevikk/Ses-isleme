@@ -1,10 +1,11 @@
 import asyncio
 import os
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import fakeredis.aioredis
 import pytest
+
 from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAdapter
 from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
 from audio_analyzer.domain.models import AudioRecord, JobStatus, OverlapSummary
@@ -44,8 +45,13 @@ async def test_claim_job_atomically_idempotency(in_memory_db):
 @pytest.mark.unit
 async def test_atomic_claim_concurrency_prevention():
     """İki worker aynı işi aynı anda almaya çalıştığında tek bir worker'ın alabildiğini doğrular."""
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
+    )
     from sqlalchemy.pool import StaticPool
+
     from audio_analyzer.adapters.repository.models import Base
 
     test_engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool, echo=False)
@@ -84,8 +90,14 @@ async def test_simulated_4000_jobs_stream_workers_zero_duplicates(monkeypatch):
     - Tüm işlerin tam 1 kez terminal duruma (COMPLETED) ulaştığını doğrular.
     """
     import tempfile
+
     from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
+    )
+
     from audio_analyzer.adapters.repository.models import Base
 
     db_file = os.path.join(tempfile.gettempdir(), f"test_worker_{uuid.uuid4().hex}.db")

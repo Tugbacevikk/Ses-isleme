@@ -1,9 +1,8 @@
 import math
-import os
 import struct
 import wave
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 
 def load_audio_bytes(file_path: str) -> bytes:
@@ -28,7 +27,7 @@ def save_audio_bytes(file_path: str, data: bytes) -> str:
     return str(path.absolute())
 
 
-def get_audio_metadata(file_path: str) -> Dict[str, Any]:
+def get_audio_metadata(file_path: str) -> dict[str, Any]:
     """
     WAV ses dosyasının kanal sayısı, örnekleme hızı (sample rate) ve süresini (sn) döner.
     """

@@ -1,12 +1,13 @@
+import os
 from logging.config import fileConfig
+
+from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
+
 from alembic import context
 
 # 1. ORM Modellerinin Import Edilmesi (Single Source of Truth)
 from audio_analyzer.adapters.repository.models import Base
-
-import os
-from dotenv import load_dotenv
 
 load_dotenv()
 

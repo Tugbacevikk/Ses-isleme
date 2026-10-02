@@ -1,14 +1,14 @@
-import asyncio
 import json
 import uuid
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-from fastapi import HTTPException, Request
+import pytest
+from fastapi import Request
 
 from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
-from audio_analyzer.adapters.storage.in_memory_storage_adapter import InMemoryStorageAdapter
+from audio_analyzer.adapters.storage.in_memory_storage_adapter import (
+    InMemoryStorageAdapter,
+)
 from audio_analyzer.api.rate_limiter import RedisRateLimiter
 from audio_analyzer.domain.models import AudioRecord, JobStatus
 from audio_analyzer.services.job_service import JobService
@@ -153,6 +153,7 @@ async def test_webhook_worker_delivery_failure_and_dead_status(in_memory_db):
 
         # Status DEAD olmalı
         from sqlalchemy import select
+
         from audio_analyzer.adapters.repository.models import WebhookDeliveryModel
 
         stmt = select(WebhookDeliveryModel).where(WebhookDeliveryModel.id == delivery_id)

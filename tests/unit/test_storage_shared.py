@@ -1,12 +1,17 @@
 import concurrent.futures
 import os
-import pytest
 import uuid
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-from audio_analyzer.adapters.storage.in_memory_storage_adapter import InMemoryStorageAdapter
-from audio_analyzer.adapters.storage.local_disk_storage_adapter import LocalDiskStorageAdapter
+import pytest
+
+from audio_analyzer.adapters.storage.in_memory_storage_adapter import (
+    InMemoryStorageAdapter,
+)
+from audio_analyzer.adapters.storage.local_disk_storage_adapter import (
+    LocalDiskStorageAdapter,
+)
 from audio_analyzer.adapters.storage.s3_storage_adapter import S3StorageAdapter
 from audio_analyzer.adapters.storage.storage_factory import (
     assert_storage_shared_across_processes,

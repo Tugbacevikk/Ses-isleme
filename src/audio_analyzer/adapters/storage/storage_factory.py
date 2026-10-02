@@ -1,7 +1,11 @@
 import os
 
-from audio_analyzer.adapters.storage.in_memory_storage_adapter import InMemoryStorageAdapter
-from audio_analyzer.adapters.storage.local_disk_storage_adapter import LocalDiskStorageAdapter
+from audio_analyzer.adapters.storage.in_memory_storage_adapter import (
+    InMemoryStorageAdapter,
+)
+from audio_analyzer.adapters.storage.local_disk_storage_adapter import (
+    LocalDiskStorageAdapter,
+)
 from audio_analyzer.adapters.storage.s3_storage_adapter import S3StorageAdapter
 from audio_analyzer.domain.interfaces import IAudioStorage
 

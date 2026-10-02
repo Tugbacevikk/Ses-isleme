@@ -1,7 +1,4 @@
-import os
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
 
 from audio_analyzer.adapters.repository.models import Base
 from audio_analyzer.domain.models import DiarizationSegment, WordSegment
@@ -17,7 +14,11 @@ def enable_mock_stt_for_tests(monkeypatch):
 @pytest.fixture
 async def in_memory_db():
     """Birim testler için asenkron bellek içi (in-memory) SQLite veritabanı fixture'ı."""
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
+    )
     from sqlalchemy.pool import StaticPool
 
     engine = create_async_engine(

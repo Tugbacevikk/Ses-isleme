@@ -1,6 +1,7 @@
 import uuid
-import pytest
+
 import fakeredis.aioredis
+import pytest
 
 from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAdapter
 from audio_analyzer.workers.stream_worker import RedisStreamWorker
@@ -40,7 +41,7 @@ async def test_redis_stream_publish_job(stream_adapter, fake_redis_client):
     m_id, fields = raw_stream[0]
     assert m_id == msg_id
     assert fields["job_id"] == job_id
-    assert fields["file_name"] == test_call.wav if False else fields["file_name"] == "test_call.wav"
+    assert fields["file_name"] == "test_call.wav"
     assert fields["callback_url"] == "https://example.com/webhook"
 
 
