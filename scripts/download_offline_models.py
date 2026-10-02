@@ -31,16 +31,9 @@ def download_vad_model():
     print(f"[VAD] Silero VAD Modeli indiriliyor -> {vad_dir}")
 
     try:
-        import torch
+        from silero_vad import load_silero_vad
 
-        torch.hub.set_dir(str(vad_dir))
-        model, _ = torch.hub.load(
-            repo_or_dir="snakers4/silero-vad",
-            model="silero_vad",
-            force_reload=False,
-            onnx=False,
-            trust_repo=True,
-        )
+        model = load_silero_vad()
         print("[OK] Silero VAD Modeli yerel klasöre kaydedildi!")
     except Exception as e:
         print(f"[WARNING] Silero VAD indirme uyarısı: {e}")

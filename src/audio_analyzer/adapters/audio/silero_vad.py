@@ -21,23 +21,21 @@ class SileroVADProcessor(IVADProcessor):
     def __init__(self, threshold: float = 0.5):
         self.threshold = threshold
         self._model = None
+        self._get_speech_timestamps_fn = None
 
     def _load_model(self):
         if self._model is None:
             try:
-                model, _ = torch.hub.load(
-                    repo_or_dir="snickersoft/silero-vad",
-                    model="silero_vad",
-                    force_reload=False,
-                    onnx=False,
-                    trust_repo=True,
-                )
-                self._model = model
+                from silero_vad import get_speech_timestamps, load_silero_vad
+
+                self._model = load_silero_vad()
+                self._get_speech_timestamps_fn = get_speech_timestamps
             except Exception as e:
-                logger.info(
-                    "Silero VAD torch hub note: %s. Energy VAD kullanılıyor.", e
+                logger.warning(
+                    "Silero VAD model yükleme uyarısı: %s. Energy VAD kullanılıyor.", e
                 )
                 self._model = "ENERGY_FALLBACK"
+                self._get_speech_timestamps_fn = None
 
     def get_speech_timestamps(
         self, audio_input: Union[str, np.ndarray], min_silence_duration_ms: int = 400
@@ -64,13 +62,14 @@ class SileroVADProcessor(IVADProcessor):
 
         self._load_model()
 
-        if self._model != "ENERGY_FALLBACK" and hasattr(self._model, "get_speech_timestamps"):
+        if self._model != "ENERGY_FALLBACK" and self._get_speech_timestamps_fn is not None:
             try:
                 wav_tensor = torch.tensor(data, dtype=torch.float32)
-                timestamps = self._model.get_speech_timestamps(
+                timestamps = self._get_speech_timestamps_fn(
                     wav_tensor,
-                    sr=16000,
+                    self._model,
                     threshold=self.threshold,
+                    sampling_rate=16000,
                     min_silence_duration_ms=min_silence_duration_ms,
                 )
                 return [
