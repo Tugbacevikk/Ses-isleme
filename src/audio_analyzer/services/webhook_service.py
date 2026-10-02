@@ -54,11 +54,25 @@ class WebhookService:
                 return None
         return cls._async_client
 
-    def generate_signature(self, timestamp_str: str, body_str: str) -> str:
+    def generate_signature(self, timestamp_str: Any, body_str: Optional[str] = None) -> str:
         """
         Payload veri bütünlüğünü ve zaman damgasını garanti etmek için HMAC-SHA256 imzası üretir.
         Format: sha256=HMAC(secret, f"{timestamp}.{body}")
         """
+        if body_str is None:
+            body = timestamp_str
+            if isinstance(body, bytes):
+                body = body.decode("utf-8")
+            elif isinstance(body, dict):
+                body = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
+            timestamp_str = str(int(time.time()))
+            body_str = body
+        else:
+            if isinstance(body_str, bytes):
+                body_str = body_str.decode("utf-8")
+            elif isinstance(body_str, dict):
+                body_str = json.dumps(body_str, ensure_ascii=False, separators=(",", ":"))
+
         signature_data = f"{timestamp_str}.{body_str}".encode("utf-8")
         raw_hmac = hmac.new(
             self.secret_key.encode("utf-8"), signature_data, hashlib.sha256

@@ -48,7 +48,7 @@ def get_host_semaphore(url: str, max_concurrent: int) -> asyncio.Semaphore:
     return _host_semaphores[netloc]
 
 
-def sign_payload(payload_str: str, secret: str, timestamp_str: str) -> str:
+def sign_payload(payload_str: str, secret: str, timestamp_str: Optional[str] = None) -> str:
     """Payload ve timestamp verisini HMAC SHA256 ile imzalar."""
     from audio_analyzer.services.webhook_service import WebhookService
 

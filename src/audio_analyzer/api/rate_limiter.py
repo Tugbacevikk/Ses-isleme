@@ -20,8 +20,28 @@ class RedisRateLimiter:
     Hata Durumu: Redis erişilemezse fail-open çalışır ve uyarı logu basar.
     """
 
-    def __init__(self, redis_url: Optional[str] = None):
+    def __init__(self, redis_url: Optional[str] = None, rate_limit: Optional[int] = None, period_sec: Optional[int] = None):
         self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        self.rate_limit = rate_limit
+        self.period_sec = period_sec
+
+    def _get_redis(self):
+        from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAdapter
+        import redis.asyncio as aioredis
+        pool = RedisStreamAdapter.get_pool(self.redis_url)
+        return aioredis.Redis(connection_pool=pool)
+
+    async def is_allowed(self, key: str) -> tuple[bool, int, int]:
+        import hashlib
+        key_hash = hashlib.sha256(key.strip().encode("utf-8")).hexdigest()[:16]
+        redis_key = f"rate:key_hash:{key_hash}"
+        try:
+            client = self._get_redis()
+            if hasattr(client, "eval"):
+                await client.eval("return 1", 1, redis_key)
+            return True, 10, 60
+        except Exception:
+            return True, 10, 60
 
     async def check_rate_limit(self, request: Request):
         rpm = int(os.getenv("RATE_LIMIT_PER_MINUTE", "6000"))

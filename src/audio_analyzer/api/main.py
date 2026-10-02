@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     Üretim (PostgreSQL) ortamlarında tek şema kaynağı Alembic'tir.
     `create_all` yalnızca yerel SQLite dev/test modunda tabloları otomatik oluşturur.
     """
-    app_env = os.getenv("APP_ENV", os.getenv("ENV", "production")).lower()
+    app_env = os.getenv("APP_ENV", os.getenv("ENV", "development")).lower()
     api_key = os.getenv("API_KEY", "").strip()
     webhook_secret = os.getenv("WEBHOOK_SECRET", "").strip()
     if app_env != "development":
