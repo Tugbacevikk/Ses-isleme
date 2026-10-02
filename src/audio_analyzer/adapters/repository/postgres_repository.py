@@ -25,21 +25,10 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         self.autocommit = autocommit
 
     async def _commit_or_flush(self):
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                if self.autocommit:
-                    await self.session.commit()
-                else:
-                    await self.session.flush()
-                break
-            except OperationalError as ex:
-                if "locked" in str(ex).lower() and attempt < max_retries - 1:
-                    import asyncio
-
-                    await asyncio.sleep(0.2 * (attempt + 1))
-                else:
-                    raise
+        if self.autocommit:
+            await self.session.commit()
+        else:
+            await self.session.flush()
 
     async def save_record(self, record: AudioRecord) -> AudioRecord:
         orm_model = AudioRecordModel(
@@ -187,7 +176,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
 
         res = await self.session.execute(stmt)
         affected = res.rowcount
-        await self._commit_or_flush()
+        await self.session.commit()
         self.session.expire_all()
 
         if affected > 0:
@@ -198,6 +187,107 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
             if current_record and current_record.status == JobStatus.COMPLETED:
                 return True, current_record, True
             return False, current_record, False
+
+    async def touch_processing(self, record_id: uuid.UUID, claim_token: Optional[object]) -> bool:
+        stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
+        res = await self.session.execute(stmt)
+        orm_model = res.scalar_one_or_none()
+        if not orm_model:
+            return False
+
+        if orm_model.status != JobStatus.PROCESSING.value:
+            return False
+
+        if claim_token is not None and orm_model.processing_started_at is not None:
+            t1 = claim_token.isoformat() if hasattr(claim_token, "isoformat") else str(claim_token)
+            t2 = orm_model.processing_started_at.isoformat() if hasattr(orm_model.processing_started_at, "isoformat") else str(orm_model.processing_started_at)
+            if t1 != t2:
+                return False
+
+        orm_model.updated_at = datetime.now(timezone.utc)
+        await self.session.commit()
+        return True
+
+    async def complete_job(
+        self,
+        record_id: uuid.UUID,
+        claim_token: Optional[object],
+        utterances: List[TranscriptUtterance],
+        language: Optional[str] = None,
+        overlap_summary: Optional[object] = None,
+        webhook_payload: Optional[str] = None,
+    ) -> bool:
+        stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
+        res = await self.session.execute(stmt)
+        orm_model = res.scalar_one_or_none()
+        if not orm_model:
+            return False
+
+        if orm_model.status == JobStatus.COMPLETED.value:
+            # Check if token matches (or if completed by same token)
+            if claim_token is not None and orm_model.processing_started_at is not None:
+                t1 = claim_token.isoformat() if hasattr(claim_token, "isoformat") else str(claim_token)
+                t2 = orm_model.processing_started_at.isoformat() if hasattr(orm_model.processing_started_at, "isoformat") else str(orm_model.processing_started_at)
+                if t1 != t2:
+                    return False
+            return True
+
+        if orm_model.status != JobStatus.PROCESSING.value:
+            return False
+
+        if claim_token is not None and orm_model.processing_started_at is not None:
+            t1 = claim_token.isoformat() if hasattr(claim_token, "isoformat") else str(claim_token)
+            t2 = orm_model.processing_started_at.isoformat() if hasattr(orm_model.processing_started_at, "isoformat") else str(orm_model.processing_started_at)
+            if t1 != t2:
+                return False
+        elif claim_token is not None and orm_model.processing_started_at is None:
+            return False
+
+        # Clear existing utterances in transaction to avoid duplication
+        await self.session.execute(
+            delete(TranscriptUtteranceModel).where(TranscriptUtteranceModel.audio_record_id == record_id)
+        )
+
+        if utterances:
+            u_models = [
+                TranscriptUtteranceModel(
+                    id=u.id or uuid.uuid4(),
+                    audio_record_id=record_id,
+                    speaker_id=u.speaker_id,
+                    start_time=u.start_time,
+                    end_time=u.end_time,
+                    text=u.text,
+                    created_at=u.created_at or datetime.now(timezone.utc),
+                )
+                for u in utterances
+            ]
+            self.session.add_all(u_models)
+
+        now = datetime.now(timezone.utc)
+        orm_model.status = JobStatus.COMPLETED.value
+        orm_model.error_message = None
+        orm_model.updated_at = now
+        if language:
+            orm_model.language = language
+
+        # Transactional Outbox: insert WebhookDeliveryModel in the SAME transaction
+        if orm_model.callback_url and webhook_payload:
+            delivery_id = uuid.uuid4()
+            delivery = WebhookDeliveryModel(
+                id=delivery_id,
+                job_id=record_id,
+                url=orm_model.callback_url,
+                payload=webhook_payload,
+                attempts=0,
+                next_attempt_at=now,
+                status="PENDING",
+                created_at=now,
+                updated_at=now,
+            )
+            self.session.add(delivery)
+
+        await self.session.commit()
+        return True
 
     async def update_status(
         self, record_id: uuid.UUID, status: JobStatus, error_message: Optional[str] = None
@@ -221,33 +311,12 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         utterances: List[TranscriptUtterance],
         language: Optional[str] = None,
     ) -> bool:
-        stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
-        res = await self.session.execute(stmt)
-        orm_model = res.scalar_one_or_none()
-        if not orm_model:
-            return False
-
-        if utterances:
-            u_models = [
-                TranscriptUtteranceModel(
-                    id=u.id,
-                    audio_record_id=record_id,
-                    speaker_id=u.speaker_id,
-                    start_time=u.start_time,
-                    end_time=u.end_time,
-                    text=u.text,
-                    created_at=u.created_at,
-                )
-                for u in utterances
-            ]
-            self.session.add_all(u_models)
-
-        orm_model.status = JobStatus.COMPLETED.value
-        if language:
-            orm_model.language = language
-
-        await self._commit_or_flush()
-        return True
+        return await self.complete_job(
+            record_id=record_id,
+            claim_token=None,
+            utterances=utterances,
+            language=language,
+        )
 
     async def update_utterance(
         self, record_id: uuid.UUID, utterance_index: int, speaker_id: str, text: str
@@ -378,14 +447,25 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
             select(AudioRecordModel)
             .where(
                 AudioRecordModel.status == JobStatus.PENDING.value,
-                AudioRecordModel.created_at < threshold,
+                AudioRecordModel.updated_at < threshold,
             )
-            .order_by(AudioRecordModel.created_at.asc())
+            .order_by(AudioRecordModel.updated_at.asc())
             .limit(limit)
         )
         res = await self.session.execute(stmt)
         orm_records = res.scalars().all()
         return [self._to_domain(r) for r in orm_records]
+
+    async def touch_pending(self, record_id: uuid.UUID) -> bool:
+        """PENDING durumundaki işin updated_at zamanını günceller."""
+        stmt = select(AudioRecordModel).where(AudioRecordModel.id == record_id)
+        res = await self.session.execute(stmt)
+        orm_model = res.scalar_one_or_none()
+        if not orm_model:
+            return False
+        orm_model.updated_at = datetime.now(timezone.utc)
+        await self._commit_or_flush()
+        return True
 
     async def get_stale_processing_records(self, stale_seconds: int = 1800, limit: int = 50) -> List[AudioRecord]:
         """

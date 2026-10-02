@@ -165,8 +165,8 @@ async def upload_and_analyze_audio(
             logger.error("Redis Stream (XADD) yayını başarısız oldu (%s). Kayıt PENDING kaldı, Sweeper toparlayacak.", e)
             raise HTTPException(
                 status_code=503,
-                detail="Mesaj kuyruğu servisi geçici olarak yanıt vermiyor. İsteğiniz PENDING olarak kaydedildi.",
-                headers={"Retry-After": "5"},
+                detail=f"Mesaj kuyruğu servisi geçici olarak yanıt vermiyor. İsteğiniz PENDING olarak kaydedildi (job_id: {job_id}).",
+                headers={"Retry-After": "5", "X-Job-ID": str(job_id)},
             )
     else:
         env_mode = os.getenv("APP_ENV", os.getenv("ENV", "development")).lower()

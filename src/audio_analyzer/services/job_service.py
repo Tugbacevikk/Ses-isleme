@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import re
 import uuid
@@ -78,8 +79,16 @@ class JobService:
             status=JobStatus.PENDING,
             callback_url=callback_url,
         )
-        saved = await self.repo.save_record(record)
-        return saved.id
+        try:
+            saved = await self.repo.save_record(record)
+            return saved.id
+        except Exception as ex:
+            if external_id and ("unique" in str(ex).lower() or "integrity" in str(ex).lower() or "duplicate" in str(ex).lower()):
+                existing = await self.repo.get_record_by_external_id(external_id)
+                if existing:
+                    logger.info("External ID '%s' çakışmasında yarış durumu yakalandı, mevcut job_id (%s) dönülüyor.", external_id, existing.id)
+                    return existing.id
+            raise ex
 
     async def execute_job(
         self, record_id: uuid.UUID, file_bytes: Optional[bytes] = None
@@ -119,7 +128,22 @@ class JobService:
             logger.info("Job %s başka bir worker tarafından işleniyor veya zaman aşımına uğramamış, atlanıyor.", record_id)
             return "SKIPPED", 0, None
 
-        logger.info("Ses analizi görevi işleniyor (job_id=%s, dosya=%s)...", record_id, record.file_name)
+        # Claim token (fencing token)
+        claim_token = getattr(record, "processing_started_at", None)
+
+        # Heartbeat loop (Item 4)
+        async def _heartbeat_loop():
+            try:
+                while True:
+                    await asyncio.sleep(60.0)
+                    await self.repo.touch_processing(record_id, claim_token)
+            except asyncio.CancelledError:
+                pass
+            except Exception as hb_err:
+                logger.warning("Heartbeat loop warning for job %s: %s", record_id, hb_err)
+
+        heartbeat_task = asyncio.create_task(_heartbeat_loop())
+        completed_success = False
 
         # --- DB BAĞLANTISI SERBEST: AI Pipeline (CPU/GPU) Thread Pool'da Yürütülür ---
         try:
@@ -187,21 +211,16 @@ class JobService:
                         except Exception as clean_err:
                             logger.warning("Geçici dosya silinemedi: %s", clean_err)
 
-            logger.info("Ses analizi başarıyla tamamlandı (job_id=%s, dil=%s).", record_id, res[1])
-
             utterances, language, overlap_summary = res[0], res[1], res[2]
 
-            # Başarılı ise sonuçları ve dili kaydet (COMPLETED)
-            await self.repo.save_utterances(record_id, utterances, language=language)
-
-            # Webhook Outbox: Sonuç ile aynı akışta webhook_deliveries tablosuna yaz
+            webhook_payload_str = None
             if record.callback_url:
-                payload = {
+                payload_dict = {
                     "job_id": str(record_id),
                     "file_name": record.file_name,
                     "status": "COMPLETED",
                     "language": language,
-                    "overlap_summary": overlap_summary.dict() if overlap_summary else None,
+                    "overlap_summary": overlap_summary.dict() if overlap_summary and hasattr(overlap_summary, "dict") else None,
                     "utterances": [
                         {
                             "speaker_id": u.speaker_id,
@@ -212,14 +231,35 @@ class JobService:
                         for u in utterances
                     ],
                 }
-                await self.repo.create_webhook_delivery(
-                    job_id=record_id, url=record.callback_url, payload=json.dumps(payload)
-                )
+                webhook_payload_str = json.dumps(payload_dict)
 
+            # Atomik completion ve fencing token kontrolü (Item 2 & Item 3)
+            success = await self.repo.complete_job(
+                record_id=record_id,
+                claim_token=claim_token,
+                utterances=utterances,
+                language=language,
+                overlap_summary=overlap_summary,
+                webhook_payload=webhook_payload_str,
+            )
+
+            if not success:
+                logger.info("İş başka worker'a geçti veya fencing token eşleşmedi (job_id=%s), sonuç atılıyor.", record_id)
+                return "SKIPPED", 0, None
+
+            logger.info("Ses analizi başarıyla tamamlandı ve atomik kaydedildi (job_id=%s, dil=%s).", record_id, language)
+            completed_success = True
             return "COMPLETED", record.attempts, None
 
         except Exception as ex:
             logger.error("Job execution failed for job_id=%s: %s", record_id, ex, exc_info=True)
+            
+            # Eğer tamamlama başarılı olduysa veya veritabanında zaten COMPLETED ise, FAILED veya PENDING'e çekme! (Item 3)
+            current_rec = await self.repo.get_record_by_id(record_id)
+            if completed_success or (current_rec and current_rec.status == JobStatus.COMPLETED):
+                logger.warning("İş %s zaten COMPLETED durumunda, hata handler ile PENDING/FAILED'a çekilmiyor: %s", record_id, ex)
+                return "COMPLETED", getattr(current_rec, "attempts", 0), None
+
             sanitized_msg = sanitize_error_message(ex)
             is_transient = is_transient_error(ex)
 
@@ -244,5 +284,10 @@ class JobService:
 
             result_status = "FAILED" if is_final_failed else "RETRY"
             return result_status, attempts, sanitized_msg
+
+        finally:
+            heartbeat_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await heartbeat_task
 
 

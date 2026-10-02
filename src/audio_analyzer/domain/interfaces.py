@@ -126,6 +126,24 @@ class ITranscriptRepository(IWebhookOutboxRepository, ABC):
         pass
 
     @abstractmethod
+    async def complete_job(
+        self,
+        record_id: uuid.UUID,
+        claim_token: Optional[object],
+        utterances: List[TranscriptUtterance],
+        language: Optional[str] = None,
+        overlap_summary: Optional[object] = None,
+        webhook_payload: Optional[str] = None,
+    ) -> bool:
+        """Kayıt durumunu COMPLETED yapar, mevcut utterance'ları temizleyip yenilerini atomik ekler ve outbox kaydı oluşturur."""
+        pass
+
+    @abstractmethod
+    async def touch_processing(self, record_id: uuid.UUID, claim_token: Optional[object]) -> bool:
+        """PROCESSING durumundaki işin updated_at zamanını günceller (Heartbeat)."""
+        pass
+
+    @abstractmethod
     async def update_utterance(
         self, record_id: uuid.UUID, utterance_index: int, speaker_id: str, text: str
     ) -> bool:

@@ -54,7 +54,7 @@ class SweeperService:
             logger.warning("Sweeper kilit alma uyarısı: %s", e)
             return False
 
-    async def _renew_lock() -> bool:
+    async def _renew_lock(self) -> bool:
         """Kilit süresini uzatır."""
         client = self.adapter.get_client()
         try:
@@ -87,20 +87,25 @@ class SweeperService:
         async with uow:
             repo = uow.repository
 
-            # (a) PENDING Sweep: Bekleyen yetim kayıtları tespit et ve akışa yeniden yayınla
-            stale_pending = await repo.get_stale_pending_records(stale_seconds=pending_stale_sec, limit=50)
-            if stale_pending:
-                logger.info("Sweeper: %d adet PENDING durumunda bekleyen kayıt bulundu, akışa yayınlanıyor.", len(stale_pending))
-                for record in stale_pending:
-                    try:
-                        await self.adapter.publish_job(
-                            job_id=str(record.id),
-                            file_name=record.file_name,
-                            callback_url=record.callback_url,
-                        )
-                        logger.info("Sweeper: PENDING Job %s yeniden akışa yayınlandı.", record.id)
-                    except Exception as ex:
-                        logger.error("Sweeper: Job %s yayınlanırken hata: %s", record.id, ex)
+            # (a) PENDING Sweep: Lag > 0 ise atla, aksi halde yetim kayıtları yayınla (updated_at güncellenerek)
+            lag = await self.adapter.get_consumer_group_lag()
+            if lag is not None and lag > 0:
+                logger.info("Sweeper: Consumer group lag = %d > 0. Kuyrukta bekleyen işler var, PENDING sweep atlanıyor.", lag)
+            else:
+                stale_pending = await repo.get_stale_pending_records(stale_seconds=pending_stale_sec, limit=50)
+                if stale_pending:
+                    logger.info("Sweeper: %d adet PENDING durumunda bekleyen kayıt bulundu, akışa yayınlanıyor.", len(stale_pending))
+                    for record in stale_pending:
+                        try:
+                            await repo.touch_pending(record.id)
+                            await self.adapter.publish_job(
+                                job_id=str(record.id),
+                                file_name=record.file_name,
+                                callback_url=record.callback_url,
+                            )
+                            logger.info("Sweeper: PENDING Job %s yeniden akışa yayınlandı.", record.id)
+                        except Exception as ex:
+                            logger.error("Sweeper: Job %s yayınlanırken hata: %s", record.id, ex)
 
             # (b) PROCESSING Sweep: Süresi dolan PROCESSING kayıtları toparla
             stale_processing = await repo.get_stale_processing_records(stale_seconds=processing_stale_sec, limit=50)
@@ -121,7 +126,7 @@ class SweeperService:
                             record.attempts,
                         )
                     else:
-                        # Maksimum deneme aşıldı -> FAILED yap, DLQ'ya aktar ve webhook at
+                        # Maksimum deneme aşıldı -> FAILED yap, DLQ'ya aktar ve Transactional Outbox'a yaz
                         err_msg = f"Job processing timed out after {processing_stale_sec}s (stale processing)"
                         attempts, is_final = await repo.handle_job_failure(
                             record.id,
@@ -135,9 +140,8 @@ class SweeperService:
                             attempts=attempts,
                         )
                         if record.callback_url:
-                            from audio_analyzer.services.webhook_service import WebhookService
+                            import json
 
-                            webhook_svc = WebhookService()
                             payload = {
                                 "job_id": str(record.id),
                                 "file_name": record.file_name,
@@ -145,7 +149,11 @@ class SweeperService:
                                 "attempts": attempts,
                                 "error_message": err_msg,
                             }
-                            await webhook_svc.send_callback_async(record.callback_url, payload)
+                            await repo.create_webhook_delivery(
+                                job_id=record.id,
+                                url=record.callback_url,
+                                payload=json.dumps(payload),
+                            )
 
                         logger.error(
                             "Sweeper: Askıda kalan Job %s (attempts=%d) maks limiti aştı, FAILED yapılıp DLQ'ya atıldı.",

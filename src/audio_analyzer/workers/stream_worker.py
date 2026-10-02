@@ -114,6 +114,29 @@ class RedisStreamWorker:
                 ex,
                 exc_info=True,
             )
+            try:
+                max_attempts = int(os.getenv("MAX_JOB_ATTEMPTS", "3"))
+                delivery_count = await self.adapter.get_pending_delivery_count(msg_id)
+                if delivery_count >= max_attempts:
+                    logger.error("Mesaj %s zehirli (poison pill, delivery_count=%d >= %d). DLQ'ya atılıp FAILED yapılıyor ve XACK ediliyor.", msg_id, delivery_count, max_attempts)
+                    if job_id_str:
+                        uow = SqlAlchemyUnitOfWork(session_factory=AsyncSessionLocal)
+                        async with uow:
+                            await uow.repository.handle_job_failure(
+                                uuid.UUID(job_id_str),
+                                error_message=f"Poison pill message error: {ex}",
+                                is_transient=False,
+                                max_attempts=max_attempts,
+                            )
+                    await self.adapter.publish_to_dlq(
+                        job_id=job_id_str or "unknown",
+                        error_message=str(ex),
+                        attempts=delivery_count,
+                    )
+                    await self.adapter.ack_message(msg_id)
+            except Exception as dlq_err:
+                logger.error("DLQ poison pill işleme hatası: %s", dlq_err)
+
             return False
         finally:
             hb_task.cancel()

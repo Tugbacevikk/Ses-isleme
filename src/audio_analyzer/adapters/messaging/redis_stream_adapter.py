@@ -225,3 +225,47 @@ class RedisStreamAdapter:
             error_message,
         )
         return str(msg_id)
+
+    async def get_consumer_group_lag(self) -> Optional[int]:
+        """
+        Redis Consumer Group'un tüketilmemiş mesaj sayısını (lag) döner.
+        Grup bulunamazsa veya lag desteği yoksa None döner.
+        """
+        client = self.get_client()
+        try:
+            groups = await client.xinfo_groups(self.stream_key)
+            if groups:
+                for g in groups:
+                    g_name = g.get("name") if isinstance(g, dict) else (g[1] if isinstance(g, (list, tuple)) else None)
+                    if g_name == self.group_name or (isinstance(g_name, bytes) and g_name.decode() == self.group_name):
+                        lag = g.get("lag") if isinstance(g, dict) else None
+                        if lag is not None:
+                            return int(lag)
+            return None
+        except Exception as e:
+            logger.debug("xinfo_groups lag check note: %s", e)
+            return None
+
+    async def get_pending_delivery_count(self, message_id: str) -> int:
+        """
+        XPENDING sorgusu ile mesajın kaç kez teslim edildiğini (delivery count) döner.
+        """
+        client = self.get_client()
+        try:
+            res = await client.xpending_range(
+                name=self.stream_key,
+                groupname=self.group_name,
+                min=message_id,
+                max=message_id,
+                count=1,
+            )
+            if res and len(res) > 0:
+                item = res[0]
+                if isinstance(item, dict):
+                    return int(item.get("times_delivered", 1))
+                elif isinstance(item, (tuple, list)) and len(item) >= 4:
+                    return int(item[3])
+            return 1
+        except Exception as e:
+            logger.debug("xpending_range delivery count note: %s", e)
+            return 1
