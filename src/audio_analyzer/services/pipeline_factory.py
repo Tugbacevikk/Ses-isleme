@@ -55,7 +55,9 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
     # 2. Diarization Engine (%100 Yerel ve İnternetsiz Token-Free Diarizasyon)
     from audio_analyzer.adapters.diarization.speechbrain_adapter import SpeechBrainECAPADiarizer
 
-    diarizer = SpeechBrainECAPADiarizer(device_config=device_config)
+    diarizer = SpeechBrainECAPADiarizer(
+        device_config=device_config, num_speakers=settings.target_num_speakers
+    )
 
     from audio_analyzer.adapters.audio.rust_dsp_adapter import RustAudioDSPProcessor
     from audio_analyzer.adapters.audio.denoiser import DeepFilterDenoiser

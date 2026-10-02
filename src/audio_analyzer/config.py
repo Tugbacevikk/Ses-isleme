@@ -49,7 +49,7 @@ class Settings:
     whisper_beam_size: int = field(default_factory=lambda: int(os.getenv("WHISPER_BEAM_SIZE", "1")))
     worker_cpu_threads: int = field(default_factory=lambda: int(os.getenv("WORKER_CPU_THREADS", "4")))
     diarization_step_sec: float = field(default_factory=lambda: float(os.getenv("DIARIZATION_STEP_SEC", "0.75")))
-    diarization_threshold: float = field(default_factory=lambda: float(os.getenv("DIARIZATION_THRESHOLD", "0.80")))
+    diarization_threshold: float = field(default_factory=lambda: float(os.getenv("DIARIZATION_THRESHOLD", "0.55")))
     target_num_speakers: Optional[int] = field(
         default_factory=lambda: int(os.getenv("TARGET_NUM_SPEAKERS", os.getenv("NUM_SPEAKERS", "2")))
         if os.getenv("TARGET_NUM_SPEAKERS") or os.getenv("NUM_SPEAKERS")

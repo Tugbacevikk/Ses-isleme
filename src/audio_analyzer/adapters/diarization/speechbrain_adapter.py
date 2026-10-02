@@ -26,8 +26,10 @@ class SpeechBrainECAPADiarizer(IDiarizer):
         max_speakers: int = 10,
         audio_processor: Optional[IAudioProcessor] = None,
     ):
+        from audio_analyzer.config import get_settings
+        settings = get_settings()
         self.device_config = device_config or DeviceConfig()
-        self.num_speakers = num_speakers
+        self.num_speakers = num_speakers if num_speakers is not None else settings.target_num_speakers
         self.max_speakers = max_speakers
         self.audio_processor = audio_processor or RustAudioDSPProcessor()
         self._classifier = None
@@ -151,7 +153,9 @@ class SpeechBrainECAPADiarizer(IDiarizer):
             norms = np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8
             unit_embs = embeddings / norms
 
-            dist_thresh = float(os.getenv("DIARIZATION_THRESHOLD", "0.80"))
+            from audio_analyzer.config import get_settings
+            settings = get_settings()
+            dist_thresh = float(os.getenv("DIARIZATION_THRESHOLD", str(settings.diarization_threshold)))
 
             if len(unit_embs) == 1:
                 raw_valid_labels = np.zeros(1, dtype=int)
@@ -159,7 +163,12 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                 from sklearn.cluster import AgglomerativeClustering
 
             target_spk_env = os.getenv("TARGET_NUM_SPEAKERS", os.getenv("NUM_SPEAKERS"))
-            effective_num_speakers = self.num_speakers or (int(target_spk_env) if target_spk_env and target_spk_env.isdigit() and int(target_spk_env) > 0 else None)
+            if self.num_speakers is not None:
+                effective_num_speakers = self.num_speakers
+            elif target_spk_env and target_spk_env.isdigit() and int(target_spk_env) > 0:
+                effective_num_speakers = int(target_spk_env)
+            else:
+                effective_num_speakers = settings.target_num_speakers
 
             if effective_num_speakers is not None:
                 n_spk = min(effective_num_speakers, len(unit_embs))
