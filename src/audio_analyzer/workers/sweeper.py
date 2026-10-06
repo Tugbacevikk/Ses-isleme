@@ -161,10 +161,10 @@ class SweeperService:
             # (c) Retention Cleanup: Eski ses dosyaları ve eski veritabanı kayıtları temizliği
             try:
                 from audio_analyzer.adapters.storage.storage_factory import (
-                    create_storage,
+                    get_storage_adapter,
                 )
                 from audio_analyzer.services.retention_service import RetentionService
-                storage = create_storage()
+                storage = get_storage_adapter()
                 retention_svc = RetentionService(storage=storage, repository=repo)
                 await retention_svc.cleanup_expired_audio_files()
                 await retention_svc.cleanup_old_database_records()
