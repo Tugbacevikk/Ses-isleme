@@ -173,8 +173,8 @@ class SweeperService:
 
     async def run(self):
         """Sweeper ana döngüsü."""
-        self.running = True
-        interval_sec = float(os.getenv("SWEEPER_INTERVAL_SEC", "30"))
+        from audio_analyzer.config import get_settings
+        interval_sec = get_settings().sweeper_interval_sec
 
         logger.info("Sweeper servisi başlatılıyor (interval=%.1fs, lock=%s)...", interval_sec, self.lock_name)
 

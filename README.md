@@ -11,13 +11,15 @@ Yüksek performanslı, modüler, **Clean Architecture / Code-First** prensipleri
 - **%100 Çevrimdışı Speaker Diarization**:
   - **Birincil Motor**: SpeechBrain ECAPA-TDNN (%100 Çevrimdışı, Token-Free & Derin Nöral Ses Parmak İzi).
   - **İkincil Motor**: Local Spectral Clustering (Tamamen yerel akustik kümeleme).
+  - **Planlanan Motor**: PyAnnote (Adapter'ı şu anda deneysel/planlama aşamasındadır).
 - **SemanticRefiner & Yerel LLM Entegrasyonu**:
   - Alan Odaklı Kurallar (`domain_mode="call_center"` ile müşteri/temsilci geçiş tespiti ve rol sabitleme).
   - Opsiyonel yerel Ollama LLM (`llama3.2` / `qwen2.5`) entegrasyonu ile konuşmacı metinlerinin anlamsal iyileştirilmesi.
 - **Fusion Engine**: IoU ve Midpoint çakışma çözümleme algoritması + 1.5s sessizlik eşiği.
+- **Overlap Detection (Deneysel)**: Eşzamanlı konuşma ve çakışma tespiti özet alanı (`supported=False` olarak işaretlenir).
 - **Voice Activity Detection (VAD)**: Silero VAD ile gürültü ve sessizlik halüsinasyon filtrelemesi.
-- **Rust PyO3 Native DSP Accelerator**: Rust ile yazılmış C-hızında sıfır gecikmeli resample, VAD ve kosinüs benzerliği modülü.
-- **Asenkron Job Queue**: Redis Queue (RQ), Celery ve FastAPI BackgroundTasks ile non-blocking HTTP 202 istek işleme.
+- **Rust PyO3 Native DSP (Deneysel)**: `experimental/native/` klasöründe yer alan deneysel modül (üretim akışında varsayılan olarak Python/NumPy/SciPy tercih edilir).
+- **Asenkron Mesaj Kuyruğu Mimarisi**: Redis Streams consumer group (tavsiye edilen) ve FastAPI BackgroundTasks ile non-blocking HTTP 202 istek işleme. *(Not: BackgroundTasks modunda geçici hata alan işler PENDING durumunda kalır; otomatik RETRY ve DLQ kuyruğu için `USE_REDIS_STREAM=true` önerilir).*
 - **Sıcak Yükleme (Warm-Loading)**: Singleton AI Pipeline ile hızlı ve düşük gecikmeli analiz.
 
 ## 🏢 Kurumsal Çevrimdışı (Air-Gapped / Token-Free) Yapılandırma
@@ -25,16 +27,20 @@ Yüksek performanslı, modüler, **Clean Architecture / Code-First** prensipleri
 Sistem, internete hiç çıkmadan ve **herhangi bir HuggingFace Token'ına ihtiyaç duymadan (Token-Free)** %100 yerel modda çalışır:
 
 * **Çevrimdışı (Air-Gapped) Çalıştırma:** Modeller yerel diskinizdeki önbellekten veya `storage/models/` klasöründen okunur. Herhangi bir dış API veya HuggingFace token zorunluluğu yoktur.
-* **Token-Free Diarization:** **SpeechBrain ECAPA-TDNN** ve **Local Spectral Cluster** diyarizasyon motorları tamamen yerel matematiksel vektör hesaplaması yapar ve internet/token gerektirmez.
+* **Token-Free Diarization:** **SpeechBrain ECAPA-TDNN** ve **Local Spectral Cluster** diyarizasyon motorları tamamen yerel matematiksel vektör hesaplaması yapar ve internet/token gerektirmez. `TARGET_NUM_SPEAKERS` ortam değişkeni ayarlanmadığında dinamik konuşmacı tespiti devreye girer. Dinamik tespitte kullanılan `DIARIZATION_THRESHOLD` eşik değerinin optimum sonuç için gerçek kayıtlarla ayarlanması (tuning) gerekmektedir.
 
 ## Kurulum ve Başlatma
 
 ### 1. Bağımlılıkların Yüklenmesi
 ```bash
-# Sanal ortamı aktifleştirme
-.\venv\Scripts\activate
+# Sanal ortamı aktifleştirme:
+# Windows (PowerShell):
+.\.venv\Scripts\activate
 
-# Paketi ve tüm bağımlılıkları yükleme
+# Linux / macOS:
+source .venv/bin/activate
+
+# Paketi ve tüm bağımlılıkları yükleme:
 pip install -e .
 ```
 
@@ -66,7 +72,7 @@ python run_analysis.py --audio storage/raw/ornek_ses.wav
 pytest
 ```
 
-### 5. Rust PyO3 Native DSP Modülü (Deneysel / Kullanılmıyor)
+### 5. Rust PyO3 Native DSP Modülü (Deneysel)
 *Not: `experimental/native/` klasöründeki Rust modülü deneyseldir ve varsayılan üretim akışında kullanılmamaktadır (NumPy/SciPy polyphase resample ve NumPy vectorization işlemleri standart olarak yürütülür).*
 
 ---

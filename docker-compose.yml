@@ -14,6 +14,10 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - APP_ENV=production
+      - API_KEY=${API_KEY}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-5000} # toplu feedback entegrasyonu için yüksek tutulmalı
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/audio_db}
       - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASSWORD:-redis_secure_pass_2026}@redis:6379/0}
       - USE_REDIS_STREAM=true
@@ -21,6 +25,7 @@ services:
       - STORAGE_DIR=/app/storage/raw
       - WHISPER_MODEL_SIZE=small
       - WORKER_CPU_THREADS=4
+      - TARGET_NUM_SPEAKERS=${TARGET_NUM_SPEAKERS:-2}
       - HF_HOME=/app/storage/cache
     volumes:
       - audio_storage:/app/storage
@@ -42,12 +47,16 @@ services:
     command: python -m audio_analyzer.workers.stream_worker
     env_file: .env
     environment:
+      - APP_ENV=production
+      - API_KEY=${API_KEY}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/audio_db}
       - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASSWORD:-redis_secure_pass_2026}@redis:6379/0}
       - STORAGE_TYPE=disk
       - STORAGE_DIR=/app/storage/raw
       - WHISPER_MODEL_SIZE=small
       - WORKER_CPU_THREADS=4
+      - TARGET_NUM_SPEAKERS=${TARGET_NUM_SPEAKERS:-2}
       - HF_HOME=/app/storage/cache
       - USE_LLM=false
       - OLLAMA_URL=http://host.docker.internal:11434/api/generate

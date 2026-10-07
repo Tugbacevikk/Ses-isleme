@@ -33,8 +33,6 @@ class FasterWhisperAdapter(ISTTEngine):
                 from faster_whisper import WhisperModel
 
                 cpu_threads = setup_cpu_thread_budget()
-                if cpu_threads > 4:
-                    cpu_threads = 4
                 self._model = WhisperModel(
                     self.model_size,
                     device=self.device_config.device,
@@ -58,12 +56,11 @@ class FasterWhisperAdapter(ISTTEngine):
                 )
 
     def transcribe(self, audio_path: str) -> tuple[list[WordSegment], str | None]:
-        self._lazy_load_model()
+        from audio_analyzer.config import get_settings
+        settings = get_settings()
         language = os.getenv("WHISPER_LANGUAGE", "tr")
-        profile = os.getenv("PIPELINE_PROFILE", "full").lower()
-        default_beam = "1" if profile == "feedback" else "5"
-        beam_size = int(os.getenv("WHISPER_BEAM_SIZE", default_beam))
-        batch_size = int(os.getenv("WHISPER_BATCH_SIZE", "1"))
+        beam_size = settings.whisper_beam_size
+        batch_size = settings.whisper_batch_size
         vad_params = dict(min_silence_duration_ms=1000, speech_pad_ms=400)
 
         prompt_str = self.initial_prompt or (
@@ -72,7 +69,7 @@ class FasterWhisperAdapter(ISTTEngine):
             else None
         )
 
-        if self._batched_model is not None:
+        if self._batched_model is not None and self.device_config.device == "cuda":
             segments, info = self._batched_model.transcribe(
                 audio_path,
                 batch_size=batch_size,

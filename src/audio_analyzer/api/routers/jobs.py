@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import mimetypes
 import os
@@ -24,6 +25,7 @@ from audio_analyzer.adapters.messaging.redis_stream_adapter import RedisStreamAd
 from audio_analyzer.adapters.storage.storage_factory import get_storage_adapter
 from audio_analyzer.api.dependencies import get_repository, get_uow
 from audio_analyzer.api.rate_limiter import rate_limiter
+from audio_analyzer.config import get_settings
 from audio_analyzer.domain.interfaces import ITranscriptRepository
 from audio_analyzer.domain.models import OverlapSummary, TranscriptUtterance
 from audio_analyzer.services.job_service import JobService
@@ -44,8 +46,10 @@ async def verify_api_key(api_key: str | None = Depends(api_key_header)):
     İsteğin X-API-Key başlığını doğrular. Ortam değişkeninde API_KEY tanımlıysa kontrol eder.
     Tanımlı değilse APP_ENV=development haricinde erişimi engeller.
     """
-    expected_api_key = os.getenv("API_KEY", "").strip()
-    app_env = os.getenv("APP_ENV", os.getenv("ENV", "development")).lower()
+    from audio_analyzer.config import get_settings
+    settings = get_settings()
+    expected_api_key = settings.api_key.strip()
+    app_env = settings.app_env
 
     if expected_api_key:
         if not api_key or not secrets.compare_digest(api_key, expected_api_key):
@@ -67,8 +71,13 @@ async def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: b
     try:
         record_uuid = uuid.UUID(job_id_str)
         async with get_uow() as uow:
+            from audio_analyzer.api.dependencies import AsyncSessionLocal
             storage = get_storage_adapter()
-            job_service = JobService(storage=storage, repository=uow.repository)
+            job_service = JobService(
+                storage=storage,
+                repository=uow.repository,
+                session_factory=AsyncSessionLocal,
+            )
             await job_service.execute_job(record_uuid, file_bytes=file_bytes)
     except Exception as ex:
         logger.error("Background task execution error: %s", ex, exc_info=True)
@@ -159,7 +168,8 @@ async def upload_and_analyze_audio(
 
     if callback_url:
         from audio_analyzer.utils.ssrf_validator import validate_callback_url
-        if not validate_callback_url(callback_url):
+        is_valid_cb = await asyncio.to_thread(validate_callback_url, callback_url)
+        if not is_valid_cb:
             raise HTTPException(
                 status_code=400,
                 detail="Geçersiz veya güvensiz callback_url (SSRF koruması: Özel/yerel IP adresleri ve güvensiz protokoller kabul edilmez).",
@@ -195,7 +205,7 @@ async def upload_and_analyze_audio(
                 headers={"Retry-After": "5", "X-Job-ID": str(job_id)},
             )
     else:
-        env_mode = os.getenv("APP_ENV", os.getenv("ENV", "development")).lower()
+        env_mode = get_settings().app_env
         if env_mode in {"production", "prod"}:
             logger.warning(
                 "UYARI: Production ortamında in-process BackgroundTasks kullanımı yüksek GPU/CPU yükünde HTTP sunucusunu kilitleyebilir. 'USE_REDIS_STREAM=true' yapılandırılması şiddetle önerilir (Job ID: %s).",
@@ -328,7 +338,7 @@ async def get_job_audio_file(
                 media_type, _ = mimetypes.guess_type(record.file_name)
                 if not media_type:
                     media_type = "audio/wav"
-                return Response(content=audio_bytes, media_type=media_type, headers={"Accept-Ranges": "bytes"})
+                return Response(content=audio_bytes, media_type=media_type)
         except Exception as e:
             logger.warning("RAM storage get_bytes note: %s", e)
 
@@ -354,15 +364,17 @@ async def delete_job(
     if not record:
         raise HTTPException(status_code=404, detail="Ses analizi görevi bulunamadı.")
 
+    # 1. Önce DB kaydını sil ve commit et
+    success = await repository.delete_record(record_uuid)
+    if not success:
+        raise HTTPException(status_code=404, detail="Görevi veritabanından silme başarısız.")
+
+    # 2. Sonra dosyayı best-effort sil
     storage = get_storage_adapter()
     try:
         storage.delete(record.storage_uri)
     except Exception as ex:
         logger.warning("File delete note: %s", ex)
-
-    success = await repository.delete_record(record_uuid)
-    if not success:
-        raise HTTPException(status_code=404, detail="Görevi veritabanından silme başarısız.")
 
     return {"status": "SUCCESS", "message": "Ses analizi kaydı ve dosyası başarıyla silindi."}
 

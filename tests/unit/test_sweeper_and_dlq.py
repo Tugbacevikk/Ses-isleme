@@ -42,8 +42,10 @@ async def test_permanent_error_immediate_dlq(async_test_db, monkeypatch):
     session_factory, _ = async_test_db
     monkeypatch.setenv("MAX_JOB_ATTEMPTS", "3")
 
-    fake_server = fakeredis.aioredis.FakeServer()
-    fake_redis = fakeredis.aioredis.FakeRedis(server=fake_server, decode_responses=True)
+    fake_server_cls = getattr(fakeredis, "FakeServer", getattr(fakeredis.aioredis, "FakeServer", None))
+    fake_redis_cls = getattr(fakeredis.aioredis, "FakeRedis", getattr(fakeredis, "FakeRedis", None))
+    fake_server = fake_server_cls()
+    fake_redis = fake_redis_cls(server=fake_server, decode_responses=True)
     stream_adapter = RedisStreamAdapter(redis_client=fake_redis)
     await stream_adapter.create_consumer_group()
 
@@ -151,8 +153,10 @@ async def test_sweeper_stale_pending_and_processing(async_test_db, monkeypatch):
     monkeypatch.setenv("PROCESSING_STALE_SEC", "0")
     monkeypatch.setenv("MAX_JOB_ATTEMPTS", "3")
 
-    fake_server = fakeredis.aioredis.FakeServer()
-    fake_redis = fakeredis.aioredis.FakeRedis(server=fake_server, decode_responses=True)
+    fake_server_cls = getattr(fakeredis, "FakeServer", getattr(fakeredis.aioredis, "FakeServer", None))
+    fake_redis_cls = getattr(fakeredis.aioredis, "FakeRedis", getattr(fakeredis, "FakeRedis", None))
+    fake_server = fake_server_cls()
+    fake_redis = fake_redis_cls(server=fake_server, decode_responses=True)
     stream_adapter = RedisStreamAdapter(redis_client=fake_redis)
 
     pending_id = uuid.uuid4()

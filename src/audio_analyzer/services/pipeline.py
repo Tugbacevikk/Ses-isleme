@@ -99,7 +99,8 @@ class AudioAnalysisPipeline:
         try:
             # 1. Ön Gürültü Temizleme (DeepFilterNet Denoiser)
             should_denoise = False
-            if self.denoiser and self.denoiser.enabled:
+            denoiser_active = self.denoiser and self.denoiser.enabled and settings.enable_denoiser
+            if denoiser_active:
                 t0 = time.monotonic()
                 if profile == "feedback":
                     try:
@@ -122,7 +123,7 @@ class AudioAnalysisPipeline:
             import tempfile
             import uuid
 
-            if should_denoise and self.denoiser and self.denoiser.enabled:
+            if should_denoise and denoiser_active:
                 t0 = time.monotonic()
                 temp_name = f"{Path(audio_path).stem}_{uuid.uuid4().hex[:8]}.denoised.wav"
                 denoised_wav_path = os.path.join(tempfile.gettempdir(), temp_name)
@@ -189,7 +190,8 @@ class AudioAnalysisPipeline:
 
         # 2. Ön Gürültü Temizleme (RAM Üzerinde Denoise)
         should_denoise = False
-        if self.denoiser and self.denoiser.enabled:
+        denoiser_active = self.denoiser and self.denoiser.enabled and settings.enable_denoiser
+        if denoiser_active:
             t0 = time.monotonic()
             if profile == "feedback":
                 snr_db = estimate_snr_db(audio_array, 16000)
@@ -202,7 +204,7 @@ class AudioAnalysisPipeline:
                 should_denoise = True
             STAGE_DURATION_HISTOGRAM.labels(stage="denoise_check").observe(time.monotonic() - t0)
 
-        if should_denoise and self.denoiser and self.denoiser.enabled and hasattr(self.denoiser, "denoise_array"):
+        if should_denoise and denoiser_active and hasattr(self.denoiser, "denoise_array"):
             t0 = time.monotonic()
             audio_array = self.denoiser.denoise_array(audio_array, sample_rate=16000)
             STAGE_DURATION_HISTOGRAM.labels(stage="denoise").observe(time.monotonic() - t0)
@@ -256,11 +258,9 @@ class AudioAnalysisPipeline:
             else:
                 diarization_segments = []
         else:
-            total_worker_threads = int(os.getenv("WORKER_CPU_THREADS", "4"))
+            total_worker_threads = settings.worker_cpu_threads
             stt_threads = max(1, total_worker_threads // 2)
             diar_threads = max(1, total_worker_threads - stt_threads)
-            os.environ["WHISPER_CPU_THREADS"] = str(stt_threads)
-            os.environ["OMP_NUM_THREADS"] = str(diar_threads)
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 t0_stt = time.monotonic()
@@ -303,12 +303,9 @@ class AudioAnalysisPipeline:
         raw_utterances = self.fusion_engine.align(words, diarization_segments)
         STAGE_DURATION_HISTOGRAM.labels(stage="fusion").observe(time.monotonic() - t0)
 
-        # 8. SemanticRefiner
+        # 8. SemanticRefiner (Her profilde anlamsal düzeltme ve imla kurallarını çalıştırır)
         t0 = time.monotonic()
-        if profile == "feedback" and not domain_mode:
-            final_utterances = raw_utterances
-        else:
-            final_utterances = self.semantic_refiner.refine(raw_utterances)
+        final_utterances = self.semantic_refiner.refine(raw_utterances)
         STAGE_DURATION_HISTOGRAM.labels(stage="semantic_refine").observe(time.monotonic() - t0)
 
         return final_utterances, detected_language, overlap_summary

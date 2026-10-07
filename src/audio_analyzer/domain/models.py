@@ -100,6 +100,7 @@ class OverlapSegment(BaseModel):
 class OverlapSummary(BaseModel):
     """Konuşma çakışması ve kalite kontrol metrik özeti."""
 
+    supported: bool = False
     total_overlap_seconds: float = 0.0
     overlap_percentage: float = 0.0
     interrupt_count: int = 0

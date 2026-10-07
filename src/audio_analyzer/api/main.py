@@ -46,9 +46,11 @@ async def lifespan(app: FastAPI):
     Üretim (PostgreSQL) ortamlarında tek şema kaynağı Alembic'tir.
     `create_all` yalnızca yerel SQLite dev/test modunda tabloları otomatik oluşturur.
     """
-    app_env = os.getenv("APP_ENV", os.getenv("ENV", "development")).lower()
-    api_key = os.getenv("API_KEY", "").strip()
-    webhook_secret = os.getenv("WEBHOOK_SECRET", "").strip()
+    from audio_analyzer.config import get_settings
+    settings = get_settings()
+    app_env = settings.app_env
+    api_key = settings.api_key.strip()
+    webhook_secret = settings.webhook_secret.strip()
     if app_env != "development":
         if not api_key:
             raise ValueError("Üretim ortamında (APP_ENV!=development) API_KEY tanımlanması zorunludur!")
@@ -85,6 +87,8 @@ async def lifespan(app: FastAPI):
             logger.warning("SQLite tablo oluşturma uyarısı: %s", db_err)
         else:
             logger.error("PostgreSQL bağlantı hatası: %s", db_err)
+            if app_env == "production":
+                raise RuntimeError("Production ortamında veritabanı bağlantısı kurulamadı ve fallback kapalı!")
 
     use_redis_stream = os.getenv("USE_REDIS_STREAM", "false").lower() == "true"
     if not use_redis_stream:

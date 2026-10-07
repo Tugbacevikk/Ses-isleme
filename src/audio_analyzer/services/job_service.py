@@ -46,10 +46,12 @@ class JobService:
         storage: IAudioStorage,
         repository: ITranscriptRepository,
         pipeline: AudioAnalysisPipeline | None = None,
+        session_factory: object | None = None,
     ):
         self.storage = storage
         self.repo = repository
         self.pipeline = pipeline
+        self.session_factory = session_factory
 
     async def create_job(
         self,
@@ -136,7 +138,13 @@ class JobService:
             try:
                 while True:
                     await asyncio.sleep(60.0)
-                    await self.repo.touch_processing(record_id, claim_token)
+                    if self.session_factory is not None:
+                        async with self.session_factory() as hb_session:
+                            from audio_analyzer.adapters.repository.postgres_repository import PostgresRepository
+                            hb_repo = PostgresRepository(hb_session)
+                            await hb_repo.touch_processing(record_id, claim_token)
+                    else:
+                        await self.repo.touch_processing(record_id, claim_token)
             except asyncio.CancelledError:
                 pass
             except Exception as hb_err:
@@ -170,14 +178,8 @@ class JobService:
 
             res = None
             if file_bytes and hasattr(self.pipeline, "process_bytes"):
-                try:
-                    res = await asyncio.to_thread(self.pipeline.process_bytes, file_bytes)
-                except Exception as p_err:
-                    if not is_transient_error(p_err):
-                        raise p_err
-                    logger.warning("RAM (process_bytes) işleme uyarısı (%s), disk path yöntemine düşülüyor.", p_err)
-
-            if not res or not isinstance(res, (tuple, list)) or len(res) < 3:
+                res = await asyncio.to_thread(self.pipeline.process_bytes, file_bytes)
+            else:
                 local_path = await asyncio.to_thread(self.storage.get_path, record.storage_uri)
                 temp_local_file = None
                 try:
@@ -212,7 +214,11 @@ class JobService:
                     "file_name": record.file_name,
                     "status": "COMPLETED",
                     "language": language,
-                    "overlap_summary": overlap_summary.dict() if overlap_summary and hasattr(overlap_summary, "dict") else None,
+                    "overlap_summary": (
+                        overlap_summary.model_dump()
+                        if overlap_summary and hasattr(overlap_summary, "model_dump")
+                        else (overlap_summary.dict() if overlap_summary and hasattr(overlap_summary, "dict") else None)
+                    ),
                     "utterances": [
                         {
                             "speaker_id": u.speaker_id,
@@ -261,6 +267,7 @@ class JobService:
                 error_message=sanitized_msg,
                 is_transient=is_transient,
                 max_attempts=max_attempts,
+                claim_token=claim_token,
             )
 
             JOB_STATUS_COUNTER.labels(status="FAILED" if is_final_failed else "PENDING").inc()

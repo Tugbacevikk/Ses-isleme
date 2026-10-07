@@ -242,7 +242,6 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
             return False
 
         if orm_model.status == JobStatus.COMPLETED.value:
-            # Check if token matches (or if completed by same token)
             if claim_token is not None and orm_model.processing_started_at is not None:
                 t1 = claim_token.isoformat() if hasattr(claim_token, "isoformat") else str(claim_token)
                 t2 = orm_model.processing_started_at.isoformat() if hasattr(orm_model.processing_started_at, "isoformat") else str(orm_model.processing_started_at)
@@ -253,12 +252,49 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         if orm_model.status != JobStatus.PROCESSING.value:
             return False
 
-        if claim_token is not None and orm_model.processing_started_at is not None:
-            t1 = claim_token.isoformat() if hasattr(claim_token, "isoformat") else str(claim_token)
-            t2 = orm_model.processing_started_at.isoformat() if hasattr(orm_model.processing_started_at, "isoformat") else str(orm_model.processing_started_at)
-            if t1 != t2:
-                return False
-        elif claim_token is not None and orm_model.processing_started_at is None:
+        now = datetime.now(timezone.utc)
+
+        # Atomic conditional UPDATE
+        upd_stmt = (
+            update(AudioRecordModel)
+            .where(
+                AudioRecordModel.id == record_id,
+                AudioRecordModel.status == JobStatus.PROCESSING.value,
+            )
+        )
+        if claim_token is not None:
+            upd_stmt = upd_stmt.where(
+                (AudioRecordModel.processing_started_at == claim_token)
+                | (AudioRecordModel.processing_started_at.is_(None))
+            )
+
+        overlap_json = None
+        if overlap_summary is not None:
+            if hasattr(overlap_summary, "model_dump"):
+                overlap_json = json.dumps(overlap_summary.model_dump())
+            elif hasattr(overlap_summary, "dict"):
+                overlap_json = json.dumps(overlap_summary.dict())
+            elif isinstance(overlap_summary, dict):
+                overlap_json = json.dumps(overlap_summary)
+            elif isinstance(overlap_summary, str):
+                overlap_json = overlap_summary
+
+        val_map = {
+            "status": JobStatus.COMPLETED.value,
+            "error_message": None,
+            "updated_at": now,
+        }
+        if language:
+            val_map["language"] = language
+        if overlap_json is not None:
+            val_map["overlap_summary"] = overlap_json
+
+        upd_stmt = upd_stmt.values(**val_map)
+        upd_res = await self.session.execute(upd_stmt)
+
+        if upd_res.rowcount == 0:
+            # Token mismatch or status changed concurrently
+            await self.session.rollback()
             return False
 
         # Clear existing utterances in transaction to avoid duplication
@@ -275,28 +311,11 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
                     start_time=u.start_time,
                     end_time=u.end_time,
                     text=u.text,
-                    created_at=u.created_at or datetime.now(timezone.utc),
+                    created_at=u.created_at or now,
                 )
                 for u in utterances
             ]
             self.session.add_all(u_models)
-
-        now = datetime.now(timezone.utc)
-        orm_model.status = JobStatus.COMPLETED.value
-        orm_model.error_message = None
-        orm_model.updated_at = now
-        if language:
-            orm_model.language = language
-
-        if overlap_summary is not None:
-            if hasattr(overlap_summary, "model_dump"):
-                orm_model.overlap_summary = json.dumps(overlap_summary.model_dump())
-            elif hasattr(overlap_summary, "dict"):
-                orm_model.overlap_summary = json.dumps(overlap_summary.dict())
-            elif isinstance(overlap_summary, dict):
-                orm_model.overlap_summary = json.dumps(overlap_summary)
-            elif isinstance(overlap_summary, str):
-                orm_model.overlap_summary = overlap_summary
 
         # Transactional Outbox: insert WebhookDeliveryModel in the SAME transaction
         if orm_model.callback_url and webhook_payload:
@@ -478,6 +497,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         error_message: str,
         is_transient: bool = True,
         max_attempts: int = 3,
+        claim_token: object | None = None,
     ) -> tuple[int, bool]:
         """
         İş hatasını kaydeder ve deneme sayısını (attempts) artırır.
@@ -491,21 +511,45 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
         if not orm_model:
             return 0, True
 
+        if claim_token is not None and orm_model.processing_started_at is not None:
+            t1 = claim_token.isoformat() if hasattr(claim_token, "isoformat") else str(claim_token)
+            t2 = orm_model.processing_started_at.isoformat() if hasattr(orm_model.processing_started_at, "isoformat") else str(orm_model.processing_started_at)
+            if t1 != t2:
+                return getattr(orm_model, "attempts", 0) or 0, False
+
         now = datetime.now(timezone.utc)
-        orm_model.attempts = (orm_model.attempts or 0) + 1
-        orm_model.last_error_at = now
-        orm_model.error_message = error_message
-        orm_model.updated_at = now
+        new_attempts = (orm_model.attempts or 0) + 1
+        is_final = (not is_transient) or (new_attempts >= max_attempts)
+        new_status = JobStatus.FAILED.value if is_final else JobStatus.PENDING.value
 
-        is_final = (not is_transient) or (orm_model.attempts >= max_attempts)
+        upd_stmt = (
+            update(AudioRecordModel)
+            .where(
+                AudioRecordModel.id == record_id,
+                AudioRecordModel.status == JobStatus.PROCESSING.value,
+            )
+        )
+        if claim_token is not None:
+            upd_stmt = upd_stmt.where(
+                (AudioRecordModel.processing_started_at == claim_token)
+                | (AudioRecordModel.processing_started_at.is_(None))
+            )
 
-        if is_final:
-            orm_model.status = JobStatus.FAILED.value
-        else:
-            orm_model.status = JobStatus.PENDING.value
+        upd_stmt = upd_stmt.values(
+            attempts=new_attempts,
+            last_error_at=now,
+            error_message=error_message,
+            updated_at=now,
+            status=new_status,
+        )
+
+        upd_res = await self.session.execute(upd_stmt)
+        if upd_res.rowcount == 0 and claim_token is not None:
+            await self.session.rollback()
+            return getattr(orm_model, "attempts", 0) or 0, False
 
         await self._commit_or_flush()
-        return orm_model.attempts, is_final
+        return new_attempts, is_final
 
     async def get_stale_pending_records(self, stale_seconds: int = 300, limit: int = 50) -> list[AudioRecord]:
         """

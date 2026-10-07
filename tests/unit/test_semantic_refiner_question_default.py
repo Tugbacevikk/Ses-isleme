@@ -4,12 +4,13 @@ from audio_analyzer.domain.models import TranscriptUtterance
 from audio_analyzer.services.semantic_refiner import SemanticRefiner
 
 
-def test_split_on_questions_default_false():
+def test_split_on_questions_default_false(monkeypatch):
     """
     split_on_questions varsayılan olarak False olduğu için soru işareti içeren diyalogların
     sahte ikinci bir konuşmacıya bölünmediğini ve tek kart olarak kaldığını doğrular.
     """
-    refiner = SemanticRefiner()  # varsayılan olarak split_on_questions=False
+    monkeypatch.delenv("SPLIT_ON_QUESTIONS", raising=False)
+    refiner = SemanticRefiner(split_on_questions=False)  # varsayılan olarak split_on_questions=False
     utt = TranscriptUtterance(
         id=uuid.uuid4(),
         speaker_id="SPEAKER_00",

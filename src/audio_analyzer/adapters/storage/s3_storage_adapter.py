@@ -21,11 +21,13 @@ class S3StorageAdapter(IAudioStorage):
         endpoint_url: str | None = None,
         local_cache_dir: str = "storage/cache",
     ):
-        self.bucket_name = bucket_name or os.getenv("S3_BUCKET_NAME", "ses-analizi-storage")
-        self.aws_access_key_id = aws_access_key_id or os.getenv("AWS_ACCESS_KEY_ID")
-        self.aws_secret_access_key = aws_secret_access_key or os.getenv("AWS_SECRET_ACCESS_KEY")
-        self.region_name = region_name or os.getenv("AWS_REGION", "us-east-1")
-        self.endpoint_url = endpoint_url or os.getenv("S3_ENDPOINT_URL")
+        from audio_analyzer.config import get_settings
+        settings = get_settings()
+        self.bucket_name = bucket_name or settings.s3_bucket_name
+        self.aws_access_key_id = aws_access_key_id or settings.aws_access_key_id
+        self.aws_secret_access_key = aws_secret_access_key or settings.aws_secret_access_key
+        self.region_name = region_name or settings.aws_region
+        self.endpoint_url = endpoint_url or settings.s3_endpoint_url
         self.local_cache_dir = Path(local_cache_dir)
         self.local_cache_dir.mkdir(parents=True, exist_ok=True)
         self._s3_client = None

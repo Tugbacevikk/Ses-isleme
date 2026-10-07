@@ -7,7 +7,7 @@ name = "audio-analyzer"
 version = "0.1.0"
 description = "High-performance Audio Analysis (STT + Speaker Diarization) System"
 authors = [
-    { name = "Audio Analysis Team" }
+    { name = "Tuğba Çevik" }
 ]
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,7 +18,7 @@ dependencies = [
     "soundfile>=0.12.1",
     "speechbrain>=0.5.16",
     "pydantic>=2.5.0",
-    "pydantic-settings>=2.1.0",
+    "av>=11.0.0",
     "sqlalchemy>=2.0.25",
     "alembic>=1.13.1",
     "psycopg2-binary>=2.9.9",
@@ -48,7 +48,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
-    "fakeredis>=2.20.0",
+    "fakeredis>=2.20.0,<2.26.0",
     "black>=24.1.0",
     "isort>=5.13.0",
     "mypy>=1.8.0",

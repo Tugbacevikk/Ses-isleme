@@ -29,8 +29,7 @@ def majority_vote_filter(labels: np.ndarray, kernel_size: int = 3) -> np.ndarray
 class SpeechBrainECAPADiarizer(IDiarizer):
     """
     SpeechBrain ECAPA-TDNN Derin Sinir Ağı Konuşmacı Ayrıştırma Motoru (%100 Token-Free & Çevrimdışı).
-    192-boyutlu derin nöral ses parmak izleri çıkararak iki kadın konuşmacı arasındaki ses farklarını
-    kusursuz biçimde ayırır.
+    192-boyutlu nöral ses embedding'leri çıkararak hiyerarşik kümeleme (Agglomerative Clustering) ile konuşmacıları ayrıştırır.
     """
 
     def __init__(
@@ -109,7 +108,7 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                 sr = target_sr
 
             win_sec = 1.2
-            step_sec = float(os.getenv("DIARIZATION_STEP_SEC", str(settings.diarization_step_sec)))
+            step_sec = float(settings.diarization_step_sec)
             win_samples = int(sr * win_sec)
             step_samples = int(sr * step_sec)
 
@@ -177,44 +176,38 @@ class SpeechBrainECAPADiarizer(IDiarizer):
 
             from audio_analyzer.config import get_settings
             settings = get_settings()
-            dist_thresh = float(os.getenv("DIARIZATION_THRESHOLD", str(settings.diarization_threshold)))
+            dist_thresh = float(settings.diarization_threshold)
+
+            from sklearn.cluster import AgglomerativeClustering
 
             if len(unit_embs) == 1:
                 raw_valid_labels = np.zeros(1, dtype=int)
             else:
-                from sklearn.cluster import AgglomerativeClustering
-
-            target_spk_env = os.getenv("TARGET_NUM_SPEAKERS", os.getenv("NUM_SPEAKERS"))
-            if self.num_speakers is not None:
                 effective_num_speakers = self.num_speakers
-            elif target_spk_env and target_spk_env.isdigit() and int(target_spk_env) > 0:
-                effective_num_speakers = int(target_spk_env)
-            else:
-                effective_num_speakers = settings.target_num_speakers
 
-            if effective_num_speakers is not None:
-                n_spk = min(effective_num_speakers, len(unit_embs))
-                if n_spk <= 1:
-                    raw_valid_labels = np.zeros(len(unit_embs), dtype=int)
+                if effective_num_speakers is not None:
+                    n_spk = min(effective_num_speakers, len(unit_embs))
+                    if n_spk <= 1:
+                        raw_valid_labels = np.zeros(len(unit_embs), dtype=int)
+                    else:
+                        model = AgglomerativeClustering(
+                            n_clusters=n_spk, metric="cosine", linkage="average"
+                        )
+                        raw_valid_labels = model.fit_predict(unit_embs)
                 else:
                     model = AgglomerativeClustering(
-                        n_clusters=n_spk, metric="cosine", linkage="average"
+                        n_clusters=None,
+                        metric="cosine",
+                        linkage="average",
+                        distance_threshold=dist_thresh,
                     )
                     raw_valid_labels = model.fit_predict(unit_embs)
-            else:
-                model = AgglomerativeClustering(
-                    n_clusters=None,
-                    metric="cosine",
-                    linkage="average",
-                    distance_threshold=dist_thresh,
-                )
-                raw_valid_labels = model.fit_predict(unit_embs)
-                n_clusters = len(np.unique(raw_valid_labels))
-                if n_clusters > self.max_speakers:
-                    model_cap = AgglomerativeClustering(
-                        n_clusters=self.max_speakers, metric="cosine", linkage="average"
-                    )
-                    raw_valid_labels = model_cap.fit_predict(unit_embs)
+                    n_clusters = len(np.unique(raw_valid_labels))
+                    if n_clusters > self.max_speakers:
+                        model_cap = AgglomerativeClustering(
+                            n_clusters=self.max_speakers, metric="cosine", linkage="average"
+                        )
+                        raw_valid_labels = model_cap.fit_predict(unit_embs)
 
             # Map valid labels back to all windows
             raw_labels = np.zeros(num_wins, dtype=int)

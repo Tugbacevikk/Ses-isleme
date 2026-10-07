@@ -42,6 +42,8 @@ class AudioConverterProcessor(IAudioProcessor):
 
         # 3. Öncelik: FFmpeg CLI
         try:
+            import os
+            timeout_sec = float(os.getenv("FFMPEG_TIMEOUT_SEC", "300.0"))
             cmd = [
                 self.ffmpeg_bin,
                 "-y",
@@ -55,8 +57,11 @@ class AudioConverterProcessor(IAudioProcessor):
                 "pcm_s16le",
                 str(output_p),
             ]
-            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=timeout_sec)
             return str(output_p)
+        except subprocess.TimeoutExpired as tex:
+            from audio_analyzer.domain.errors import PermanentJobError
+            raise PermanentJobError(f"FFmpeg dönüştürme işlemi zaman aşımına uğradı ({timeout_sec} sn): {tex}")
         except Exception:
             pass
 

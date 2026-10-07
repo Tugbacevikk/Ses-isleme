@@ -10,9 +10,13 @@ from audio_analyzer.api.main import app
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    from audio_analyzer.config import reset_settings
+    monkeypatch.setenv("API_KEY", "")
+    reset_settings()
     with TestClient(app) as c:
         yield c
+    reset_settings()
 
 
 def make_valid_wav_bytes() -> bytes:
@@ -116,25 +120,30 @@ def test_list_jobs_endpoint(client):
 @pytest.mark.unit
 def test_api_key_authorization_on_read_and_write_endpoints(client, monkeypatch):
     """API_KEY ortam değişkeni ayarlandığında tüm okuma ve yazma endpoint'lerinin 401 döndürdüğünü doğrular."""
+    from audio_analyzer.config import reset_settings
     monkeypatch.setenv("API_KEY", "secret-test-key")
+    reset_settings()
 
-    # 1. Okuma Endpoint'leri (GET)
-    res_list = client.get("/api/v1/jobs")
-    assert res_list.status_code == 401
+    try:
+        # 1. Okuma Endpoint'leri (GET)
+        res_list = client.get("/api/v1/jobs")
+        assert res_list.status_code == 401
 
-    res_get = client.get("/api/v1/jobs/00000000-0000-0000-0000-000000000000")
-    assert res_get.status_code == 401
+        res_get = client.get("/api/v1/jobs/00000000-0000-0000-0000-000000000000")
+        assert res_get.status_code == 401
 
-    res_audio = client.get("/api/v1/jobs/00000000-0000-0000-0000-000000000000/audio")
-    assert res_audio.status_code == 401
+        res_audio = client.get("/api/v1/jobs/00000000-0000-0000-0000-000000000000/audio")
+        assert res_audio.status_code == 401
 
-    # 2. Yanlış API Key ile erişim
-    res_wrong = client.get("/api/v1/jobs", headers={"X-API-Key": "wrong-key"})
-    assert res_wrong.status_code == 401
+        # 2. Yanlış API Key ile erişim
+        res_wrong = client.get("/api/v1/jobs", headers={"X-API-Key": "wrong-key"})
+        assert res_wrong.status_code == 401
 
-    # 3. Doğru API Key ile erişim
-    res_valid = client.get("/api/v1/jobs", headers={"X-API-Key": "secret-test-key"})
-    assert res_valid.status_code == 200
+        # 3. Doğru API Key ile erişim
+        res_valid = client.get("/api/v1/jobs", headers={"X-API-Key": "secret-test-key"})
+        assert res_valid.status_code == 200
+    finally:
+        reset_settings()
 
 
 @pytest.mark.unit

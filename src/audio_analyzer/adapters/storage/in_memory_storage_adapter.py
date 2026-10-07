@@ -22,7 +22,8 @@ class InMemoryStorageAdapter(IAudioStorage):
     def __init__(self, max_items: int = 100000, max_bytes: int | None = None):
         self.max_items = max_items
         if max_bytes is None:
-            max_bytes = int(os.getenv("MEMORY_STORAGE_MAX_BYTES", str(512 * 1024 * 1024)))
+            from audio_analyzer.config import get_settings
+            max_bytes = get_settings().memory_storage_max_bytes
         self.max_bytes = max_bytes
 
     def save(self, file_bytes: bytes, file_name: str) -> str:

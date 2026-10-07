@@ -69,39 +69,50 @@ def test_local_disk_storage_path_traversal_prevention(tmp_path):
 @pytest.mark.unit
 def test_storage_factory_adapter_creation(monkeypatch):
     """STORAGE_TYPE env ayarına göre fabrika fonksiyonunun doğru adaptörü ürettiğini doğrular."""
+    from audio_analyzer.config import reset_settings
     monkeypatch.setenv("STORAGE_TYPE", "disk")
+    reset_settings()
     adapter = get_storage_adapter()
     assert isinstance(adapter, LocalDiskStorageAdapter)
 
     monkeypatch.setenv("STORAGE_TYPE", "memory")
+    reset_settings()
     adapter = get_storage_adapter()
     assert isinstance(adapter, InMemoryStorageAdapter)
 
     monkeypatch.setenv("STORAGE_TYPE", "s3")
+    reset_settings()
     adapter = get_storage_adapter()
     assert isinstance(adapter, S3StorageAdapter)
+    reset_settings()
 
 
 @pytest.mark.unit
 def test_assert_storage_shared_across_processes_guard(monkeypatch):
     """USE_REDIS_STREAM=true iken STORAGE_TYPE=memory kullanımının engellendiğini doğrular."""
+    from audio_analyzer.config import reset_settings
     monkeypatch.setenv("USE_REDIS_STREAM", "true")
     monkeypatch.setenv("STORAGE_TYPE", "memory")
+    reset_settings()
     with pytest.raises(RuntimeError, match="RAM depolaması süreçler arası paylaşılmaz"):
         assert_storage_shared_across_processes()
 
     # Disk veya S3 ile akış modu sorunsuz geçmeli
     monkeypatch.setenv("STORAGE_TYPE", "disk")
+    reset_settings()
     assert_storage_shared_across_processes()
 
     monkeypatch.setenv("STORAGE_TYPE", "s3")
+    reset_settings()
     assert_storage_shared_across_processes()
 
     # Akış/Kuyruk modu kapalıysa memory sorunsuz geçmeli
     monkeypatch.setenv("USE_REDIS_STREAM", "false")
     monkeypatch.setenv("USE_REDIS_QUEUE", "false")
     monkeypatch.setenv("STORAGE_TYPE", "memory")
+    reset_settings()
     assert_storage_shared_across_processes()
+    reset_settings()
 
 
 @pytest.mark.unit
@@ -176,3 +187,20 @@ async def test_job_service_execute_job_lazy_get_path():
     # process_bytes çağrıldığı için get_path 0 kez tetiklenmeli
     mock_storage.get_path.assert_not_called()
     mock_pipeline.process_bytes.assert_called_once_with(b"test_audio_bytes")
+
+
+@pytest.mark.unit
+def test_get_storage_type_defaults_to_disk(monkeypatch):
+    """STORAGE_TYPE env boşken get_storage_type() == 'disk' olmalı."""
+    from audio_analyzer.config import reset_settings
+    monkeypatch.delenv("STORAGE_TYPE", raising=False)
+    reset_settings()
+    from audio_analyzer.adapters.storage.storage_factory import get_storage_type, assert_storage_shared_across_processes
+    assert get_storage_type() == "disk"
+
+    monkeypatch.setenv("USE_REDIS_STREAM", "true")
+    reset_settings()
+    # assert_storage_shared_across_processes should not raise when STORAGE_TYPE is default (disk)
+    assert_storage_shared_across_processes()
+    reset_settings()
+

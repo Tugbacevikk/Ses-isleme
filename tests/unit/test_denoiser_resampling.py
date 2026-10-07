@@ -8,7 +8,8 @@ from audio_analyzer.adapters.audio.denoiser import DeepFilterDenoiser
 from audio_analyzer.config import get_settings, reset_settings
 
 
-def test_denoiser_default_disabled():
+def test_denoiser_default_disabled(monkeypatch):
+    monkeypatch.delenv("ENABLE_DENOISER", raising=False)
     reset_settings()
     settings = get_settings()
     assert settings.enable_denoiser is False

@@ -71,17 +71,44 @@ def test_webhook_signature_generation():
 
 @pytest.mark.asyncio
 async def test_rate_limiter_hashes_api_key():
-    limiter = RedisRateLimiter(rate_limit=10, period_sec=60)
+    limiter = RedisRateLimiter()
+    mock_request = MagicMock()
+    mock_request.headers.get.side_effect = lambda h: "super_secret_api_key_12345" if h == "X-API-Key" else None
+
+    mock_pipe = MagicMock()
+    # async execute mock
+    async def fake_execute():
+        return [1, True]
+    mock_pipe.execute = fake_execute
+
     mock_redis = MagicMock()
-    mock_redis.eval = MagicMock(return_value=1)
-    
-    with patch.object(limiter, "_get_redis", return_value=mock_redis):
-        raw_key = "super_secret_api_key_12345"
-        allowed, rem, reset = await limiter.is_allowed(key=raw_key)
-        assert allowed is True
-        
-        # Verify raw API key was NOT passed to Redis EVAL
-        eval_args = mock_redis.eval.call_args[0]
-        redis_key_passed = eval_args[2]
-        assert raw_key not in redis_key_passed
-        assert redis_key_passed.startswith("rate:key_hash:")
+    mock_redis.pipeline.return_value = mock_pipe
+
+    with patch("redis.asyncio.Redis", return_value=mock_redis), \
+         patch("audio_analyzer.adapters.messaging.redis_stream_adapter.RedisStreamAdapter.get_pool"):
+        await limiter.check_rate_limit(mock_request)
+        mock_pipe.incr.assert_called_once()
+        redis_key_passed = mock_pipe.incr.call_args[0][0]
+        assert "super_secret_api_key_12345" not in redis_key_passed
+        assert redis_key_passed.startswith("rate_limit:key_hash:")
+
+@pytest.mark.asyncio
+async def test_startup_fails_in_production_when_db_fails_and_fallback_disabled():
+    with patch.dict("os.environ", {
+        "APP_ENV": "production",
+        "API_KEY": "key123",
+        "WEBHOOK_SECRET": "sec123",
+        "ALLOW_SQLITE_FALLBACK": "false",
+        "DATABASE_URL": "postgresql://invalid:5432/db"
+    }):
+        mock_engine = MagicMock()
+        mock_engine.url = "postgresql://invalid:5432/db"
+        mock_engine.connect.side_effect = Exception("DB connection refused")
+
+        with patch("audio_analyzer.api.dependencies.engine", mock_engine), \
+             patch("audio_analyzer.adapters.storage.storage_factory.assert_storage_shared_across_processes"):
+            with pytest.raises(RuntimeError) as excinfo:
+                async with lifespan(app):
+                    pass
+            assert "Production ortamında veritabanı bağlantısı kurulamadı" in str(excinfo.value)
+

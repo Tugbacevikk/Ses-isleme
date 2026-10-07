@@ -9,6 +9,7 @@ def test_no_overlaps_when_single_speaker():
     ]
     summary = OverlapDetector.detect_overlaps(segments, total_audio_duration=5.0)
 
+    assert summary.supported is False
     assert summary.interrupt_count == 0
     assert summary.total_overlap_seconds == 0.0
     assert summary.overlap_percentage == 0.0

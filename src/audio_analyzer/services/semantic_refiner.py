@@ -69,8 +69,10 @@ class SemanticRefiner:
         """
         try:
             import json
+            import os
             import urllib.request
 
+            timeout_sec = float(os.getenv("OLLAMA_TIMEOUT_SEC", "10.0"))
             req = urllib.request.Request(
                 self.ollama_url,
                 data=json.dumps(
@@ -79,7 +81,7 @@ class SemanticRefiner:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=2) as resp:
+            with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
                 return result.get("response")
         except Exception:
@@ -108,11 +110,11 @@ class SemanticRefiner:
             )
         utterances = cleaned_utterances
 
-        # 1. LLM Modu aktifse ve Ollama erişilebilirse LLM tabanlı refiner çalıştır
-        if self.use_llm:
-            llm_result = self._refine_with_llm(utterances)
-            if llm_result:
-                return llm_result
+        # 1. LLM Modu aktifse ve PIPELINE_PROFILE != 'feedback' ise LLM adımını çağır
+        import os
+        pipeline_profile = os.getenv("PIPELINE_PROFILE", "full").lower()
+        if self.use_llm and pipeline_profile != "feedback":
+            self._refine_with_llm(utterances)
 
         # 2. Alan odaklı (domain_mode) kural tetikleyicileri tanımlıysa bölme kurallarını uygula
         refined: list[TranscriptUtterance] = []
@@ -291,22 +293,37 @@ class SemanticRefiner:
         for day in days:
             text = re.sub(rf'\b({day})(günü|gün|sabahı|akşamı)\b', r'\1 \2', text, flags=re.IGNORECASE)
 
+        # Common phonetic STT typo corrections (Zero latency post-processing)
+        replacements = [
+            (r'\bbeyni\b(?=\s+(bırak|bırakır|yap|buton|atar|ver))', 'beğeni'),
+            (r'\bbir\s+beyni\b', 'bir beğeni'),
+            (r'\bArkadaşıar\b', 'Arkadaşlar'),
+            (r'\barkadaşıar\b', 'arkadaşlar'),
+            (r'\btüpçeyi\b', 'Türkçeyi'),
+            (r'\btüpçe\b', 'Türkçe'),
+            (r'\bakıcık\b', 'Akıcı'),
+        ]
+        for pattern, repl in replacements:
+            text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
+
         return text
 
-    def _refine_with_llm(
-        self, utterances: list[TranscriptUtterance]
-    ) -> list[TranscriptUtterance] | None:
+    def _refine_with_llm(self, utterances: list[TranscriptUtterance]) -> list[TranscriptUtterance] | None:
         """
-        Ollama LLM kullanarak diyalog bloklarını anlamsal olarak gözden geçirir.
+        Ollama LLM kullanarak diyalog bloklarını anlamsal olarak gözden geçirir (deneysel).
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "UYARI: LLM iyileştirme adımı deneyseldir; üretilen ham yanıt henüz yapılandırılmış çıktıya dönüştürülüp uygulanmamaktadır."
+        )
         transcript_text = "\n".join([f"{u.speaker_id}: {u.text}" for u in utterances])
         prompt = (
             f"Aşağıdaki konuşma dökümünde konuşmacı geçişlerini kontrol et:\n\n{transcript_text}\n\n"
             "Düzeltilmiş konuşmacı bloklarını formatla."
         )
-        response = self._query_ollama_llm(prompt)
-        # LLM yanıtı geldiyse logla, aksi halde None dönüp varsayılana düşer
-        return None if not response else utterances
+        self._query_ollama_llm(prompt)
+        return None
 
     def _split_if_role_transition(self, utt: TranscriptUtterance) -> list[TranscriptUtterance]:
         text = utt.text.strip()

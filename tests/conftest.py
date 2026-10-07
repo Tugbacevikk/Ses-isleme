@@ -6,9 +6,12 @@ from audio_analyzer.domain.models import DiarizationSegment, WordSegment
 
 @pytest.fixture(autouse=True)
 def enable_mock_stt_for_tests(monkeypatch):
-    """Birim ve entegrasyon testlerinin RAM yetersizliğinden etkilenmemesi için ALLOW_MOCK_STT=true ve ALLOW_SQLITE_FALLBACK=true ayarlar."""
+    """Birim ve entegrasyon testlerinin RAM yetersizliğinden etkilenmemesi için ALLOW_MOCK_STT=true, ALLOW_SQLITE_FALLBACK=true ve APP_ENV=development ayarlar."""
     monkeypatch.setenv("ALLOW_MOCK_STT", "true")
     monkeypatch.setenv("ALLOW_SQLITE_FALLBACK", "true")
+    monkeypatch.setenv("APP_ENV", "development")
+    from audio_analyzer.config import reset_settings
+    reset_settings()
 
 
 @pytest.fixture

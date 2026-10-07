@@ -7,12 +7,13 @@ from audio_analyzer.adapters.storage.local_disk_storage_adapter import (
     LocalDiskStorageAdapter,
 )
 from audio_analyzer.adapters.storage.s3_storage_adapter import S3StorageAdapter
+from audio_analyzer.config import get_settings
 from audio_analyzer.domain.interfaces import IAudioStorage
 
 
 def get_storage_type() -> str:
-    """STORAGE_TYPE ortam değişkenini küçük harf olarak döner (varsayılan 'memory')."""
-    return os.getenv("STORAGE_TYPE", "memory").lower()
+    """STORAGE_TYPE ortam değişkenini küçük harf olarak döner (varsayılan 'disk')."""
+    return get_settings().storage_type.lower()
 
 
 def get_storage_adapter() -> IAudioStorage:

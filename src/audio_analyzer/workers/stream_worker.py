@@ -50,13 +50,20 @@ class RedisStreamWorker:
 
         hb_task = asyncio.create_task(self._heartbeat_loop(msg_id))
         try:
+            from audio_analyzer.api.dependencies import AsyncSessionLocal
+
             record_id = uuid.UUID(job_id_str)
             uow = SqlAlchemyUnitOfWork(session_factory=AsyncSessionLocal)
             storage = get_storage_adapter()
 
             async with uow:
                 pipeline = get_shared_pipeline()
-                job_service = JobService(storage=storage, repository=uow.repository, pipeline=pipeline)
+                job_service = JobService(
+                    storage=storage,
+                    repository=uow.repository,
+                    pipeline=pipeline,
+                    session_factory=AsyncSessionLocal,
+                )
                 res_status, attempts, err_msg = await job_service.execute_job_detailed(record_id)
 
             if res_status in ("COMPLETED", "SKIPPED"):
@@ -220,6 +227,8 @@ async def start_worker_main():
             loop.add_signal_handler(sig, worker.stop)
         except NotImplementedError:
             pass  # Windows signals
+
+    await worker.run()
 
 def main():
     logging.basicConfig(level=logging.INFO)

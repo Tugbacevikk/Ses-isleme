@@ -20,6 +20,11 @@ from audio_analyzer.adapters.repository.models import (
 )
 
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
 def migrate():
     sqlite_url = os.getenv("SQLITE_DATABASE_URL", "sqlite:///storage/dev_database.db")
     postgres_url = os.getenv("DATABASE_URL")

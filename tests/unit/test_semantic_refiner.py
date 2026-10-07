@@ -60,3 +60,32 @@ def test_semantic_refiner_splits_dialogue_question_turns():
     assert "Hasta yakınlarını şimdi almaya başlıyoruz." in result[1].text
 
 
+def test_semantic_refiner_llm_mode_does_not_bypass_rules_and_respects_feedback_profile(monkeypatch):
+    from unittest.mock import patch
+
+    # 1. LLM active: mock Ollama response, verify rule-based steps still execute
+    monkeypatch.setenv("PIPELINE_PROFILE", "full")
+    refiner = SemanticRefiner(domain_mode="call_center", use_llm=True)
+    merged_text = "Merhaba, ben Elif Çevik. Bilgisayar yavaş çalışıyor. Şikayetinizi not aldım ve konuyu en kısa sürede çözmek için gerekli adımları atacağız."
+    utt = TranscriptUtterance(
+        id=uuid.uuid4(), speaker_id="SPEAKER_00", start_time=6.58, end_time=59.43, text=merged_text
+    )
+
+    with patch.object(refiner, "_query_ollama_llm", return_value="Dummy LLM output") as mock_query:
+        res = refiner.refine([utt])
+        mock_query.assert_called_once()
+        # Rule-based split should still happen!
+        assert len(res) == 2
+        assert res[0].speaker_id == "SPEAKER_00"
+        assert res[1].speaker_id == "SPEAKER_01"
+
+    # 2. PIPELINE_PROFILE=feedback: LLM must NOT be called
+    monkeypatch.setenv("PIPELINE_PROFILE", "feedback")
+    refiner_fb = SemanticRefiner(domain_mode="call_center", use_llm=True)
+    with patch.object(refiner_fb, "_query_ollama_llm") as mock_query_fb:
+        res_fb = refiner_fb.refine([utt])
+        mock_query_fb.assert_not_called()
+        assert len(res_fb) == 2
+
+
+

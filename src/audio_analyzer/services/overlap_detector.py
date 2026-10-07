@@ -60,6 +60,7 @@ class OverlapDetector:
             overlap_percentage = round((total_overlap_seconds / total_audio_duration) * 100, 2)
 
         summary = OverlapSummary(
+            supported=False,
             total_overlap_seconds=round(total_overlap_seconds, 2),
             overlap_percentage=overlap_percentage,
             interrupt_count=len(overlaps),

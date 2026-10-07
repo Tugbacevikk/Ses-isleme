@@ -84,6 +84,7 @@ class ITranscriptRepository(IWebhookOutboxRepository, ABC):
         error_message: str,
         is_transient: bool = True,
         max_attempts: int = 3,
+        claim_token: object | None = None,
     ) -> tuple[int, bool]:
         """İş hatasını kaydeder, attempts artırır ve durumu (FAILED veya PENDING) belirler."""
 

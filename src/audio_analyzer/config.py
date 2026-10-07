@@ -3,7 +3,26 @@ from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
+
+
+def _opt_int(name: str) -> int | None:
+    val = os.getenv(name)
+    if not val:
+        return None
+    try:
+        parsed = int(val)
+        return parsed if parsed > 0 else None
+    except ValueError:
+        return None
+
+
+def _get_whisper_beam_size() -> int:
+    env_val = os.getenv("WHISPER_BEAM_SIZE")
+    if env_val:
+        return int(env_val)
+    profile = os.getenv("PIPELINE_PROFILE", "full").lower()
+    return 1 if profile == "feedback" else 5
 
 
 @dataclass
@@ -14,6 +33,9 @@ class Settings:
     """
 
     # 1. API & Güvenlik
+    app_env: str = field(
+        default_factory=lambda: os.getenv("APP_ENV", os.getenv("ENV", "production")).lower()
+    )
     api_key: str = field(default_factory=lambda: os.getenv("API_KEY", ""))
     webhook_secret: str = field(default_factory=lambda: os.getenv("WEBHOOK_SECRET", ""))
 
@@ -46,14 +68,14 @@ class Settings:
 
     # 4. Yapay Zeka Model Yapılandırması
     whisper_model_size: str = field(default_factory=lambda: os.getenv("WHISPER_MODEL_SIZE", "small"))
-    whisper_beam_size: int = field(default_factory=lambda: int(os.getenv("WHISPER_BEAM_SIZE", "1")))
+    whisper_beam_size: int = field(default_factory=_get_whisper_beam_size)
+    whisper_batch_size: int = field(default_factory=lambda: int(os.getenv("WHISPER_BATCH_SIZE", "8")))
     worker_cpu_threads: int = field(default_factory=lambda: int(os.getenv("WORKER_CPU_THREADS", "4")))
+    diarization_engine: str = field(default_factory=lambda: os.getenv("DIARIZATION_ENGINE", "pyannote").lower())
     diarization_step_sec: float = field(default_factory=lambda: float(os.getenv("DIARIZATION_STEP_SEC", "0.3")))
     diarization_threshold: float = field(default_factory=lambda: float(os.getenv("DIARIZATION_THRESHOLD", "0.55")))
     target_num_speakers: int | None = field(
-        default_factory=lambda: int(os.getenv("TARGET_NUM_SPEAKERS", os.getenv("NUM_SPEAKERS", "2")))
-        if os.getenv("TARGET_NUM_SPEAKERS") or os.getenv("NUM_SPEAKERS")
-        else 2
+        default_factory=lambda: _opt_int("TARGET_NUM_SPEAKERS") or _opt_int("NUM_SPEAKERS")
     )
     max_silence_threshold: float = field(default_factory=lambda: float(os.getenv("MAX_SILENCE_THRESHOLD", "1.5")))
     enable_denoiser: bool = field(
@@ -93,18 +115,11 @@ class Settings:
     s3_endpoint_url: str = field(default_factory=lambda: os.getenv("S3_ENDPOINT_URL", "http://localhost:9000"))
 
 
-_settings_instance: Settings | None = None
-
-
 def get_settings() -> Settings:
-    """Merkezi Settings nesnesinin singleton erişim fonksiyonu."""
-    global _settings_instance
-    if _settings_instance is None:
-        _settings_instance = Settings()
-    return _settings_instance
+    """Merkezi Settings nesnesinin dinamik erişim fonksiyonu."""
+    return Settings()
 
 
 def reset_settings():
     """Testler sırasında konfigürasyonu yeniden yüklemek için kullanılır."""
-    global _settings_instance
-    _settings_instance = None
+    pass

@@ -27,7 +27,8 @@ def validate_callback_url(url: str | None) -> bool:
     if not scheme or not hostname:
         return False
 
-    app_env = os.getenv("APP_ENV", os.getenv("ENV", "production")).lower()
+    from audio_analyzer.config import get_settings
+    app_env = get_settings().app_env
 
     # 1. Scheme kontrolü (Sadece https; http yalnızca APP_ENV=development'ta)
     if scheme == "http" and app_env != "development":

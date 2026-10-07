@@ -21,21 +21,7 @@ def reset_pipeline_cache():
         _cached_pipeline = None
 
 
-def get_shared_pipeline() -> AudioAnalysisPipeline:
-    """
-    Sıcak Yükleme (Warm-Loading) Singleton Fabrikası.
-    Ağır GPU/CPU yapay zeka modellerini (Whisper, SpeechBrain/PyAnnote) disk/bellekten
-    yalnızca İLK İSTEKTE yükler ve sonraki tüm analiz görevlerinde hazır modeli yeniden kullanır.
-    Her istekte modeli sıfırdan yükleme gecikmesini (10-30sn) ortadan kaldırır.
-    """
-    global _cached_pipeline
-    if _cached_pipeline is not None:
-        return _cached_pipeline
-
-    with _pipeline_lock:
-        if _cached_pipeline is not None:
-            return _cached_pipeline
-
+def _build_pipeline() -> AudioAnalysisPipeline:
     settings = get_settings()
     device_config = DeviceConfig()
 
@@ -57,15 +43,24 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
             f"STT Motoru (FasterWhisper) başlatılamadı: {e}. Lütfen model bağımlılıklarını kontrol edin."
         )
 
+    # 2. Diarization Engine (Pyannote 3.1 SOTA / SpeechBrain ECAPA Fallback)
+    diar_engine_name = settings.diarization_engine
+    if diar_engine_name == "pyannote":
+        from audio_analyzer.adapters.diarization.pyannote_adapter import (
+            PyannoteAudioAdapter,
+        )
 
-    # 2. Diarization Engine (%100 Yerel ve İnternetsiz Token-Free Diarizasyon)
-    from audio_analyzer.adapters.diarization.speechbrain_adapter import (
-        SpeechBrainECAPADiarizer,
-    )
+        diarizer = PyannoteAudioAdapter(
+            device_config=device_config, num_speakers=settings.target_num_speakers
+        )
+    else:
+        from audio_analyzer.adapters.diarization.speechbrain_adapter import (
+            SpeechBrainECAPADiarizer,
+        )
 
-    diarizer = SpeechBrainECAPADiarizer(
-        device_config=device_config, num_speakers=settings.target_num_speakers
-    )
+        diarizer = SpeechBrainECAPADiarizer(
+            device_config=device_config, num_speakers=settings.target_num_speakers
+        )
 
     from audio_analyzer.adapters.audio.denoiser import DeepFilterDenoiser
     from audio_analyzer.adapters.audio.rust_dsp_adapter import RustAudioDSPProcessor
@@ -77,16 +72,18 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
 
     # 3. Modelleri sunucu açılışında belleğe ısındır (Warm-Up & Pre-Load)
     try:
-        logger.info("Yapay Zeka modelleri (FasterWhisper & SpeechBrain) belleğe yükleniyor...")
+        logger.info("Yapay Zeka modelleri (FasterWhisper & Pyannote.audio) belleğe yükleniyor...")
         if hasattr(stt_engine, "_lazy_load_model"):
             stt_engine._lazy_load_model()
-        if hasattr(diarizer, "_load_classifier"):
+        if hasattr(diarizer, "_lazy_load_pipeline"):
+            diarizer._lazy_load_pipeline()
+        elif hasattr(diarizer, "_load_classifier"):
             diarizer._load_classifier()
         logger.info("Yapay Zeka modelleri başarıyla yüklendi [HAZIR].")
     except Exception as warm_err:
         logger.warning("Model ön yükleme uyarısı: %s", warm_err)
 
-    _cached_pipeline = AudioAnalysisPipeline(
+    return AudioAnalysisPipeline(
         stt_engine=stt_engine,
         diarizer=diarizer,
         audio_processor=audio_processor,
@@ -95,4 +92,21 @@ def get_shared_pipeline() -> AudioAnalysisPipeline:
         fusion_engine=FusionEngine(max_silence_threshold=max_silence_threshold),
         semantic_refiner=SemanticRefiner(),
     )
-    return _cached_pipeline
+
+
+def get_shared_pipeline() -> AudioAnalysisPipeline:
+    """
+    Sıcak Yükleme (Warm-Loading) Singleton Fabrikası.
+    Ağır GPU/CPU yapay zeka modellerini (Whisper, SpeechBrain/PyAnnote) disk/bellekten
+    yalnızca İLK İSTEKTE yükler ve sonraki tüm analiz görevlerinde hazır modeli yeniden kullanır.
+    Her istekte modeli sıfırdan yükleme gecikmesini (10-30sn) ortadan kaldırır.
+    """
+    global _cached_pipeline
+    if _cached_pipeline is not None:
+        return _cached_pipeline
+
+    with _pipeline_lock:
+        if _cached_pipeline is not None:
+            return _cached_pipeline
+        _cached_pipeline = _build_pipeline()
+        return _cached_pipeline

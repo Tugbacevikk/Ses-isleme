@@ -72,7 +72,8 @@ def create_async_db_engine(db_url: str):
 
 
 def init_engine():
-    db_url = os.getenv("DATABASE_URL", "sqlite:///storage/dev_database.db")
+    from audio_analyzer.config import get_settings
+    db_url = get_settings().database_url
     logger.info("Veritabanı motoru başlatılıyor: %s", get_async_db_url(db_url))
     return create_async_db_engine(db_url)
 

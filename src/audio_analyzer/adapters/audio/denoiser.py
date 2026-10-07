@@ -28,6 +28,18 @@ class DeepFilterDenoiser(IAudioDenoiser):
         if not self._initialized and self.enabled:
             self._initialized = True
             try:
+                import sys
+                import types
+                import torchaudio
+
+                if "torchaudio.backend.common" not in sys.modules:
+                    b = sys.modules.get("torchaudio.backend") or types.ModuleType("torchaudio.backend")
+                    bc = types.ModuleType("torchaudio.backend.common")
+                    setattr(bc, "AudioMetaData", getattr(torchaudio, "AudioMetaData", None))
+                    setattr(b, "common", bc)
+                    sys.modules["torchaudio.backend"] = b
+                    sys.modules["torchaudio.backend.common"] = bc
+
                 from df.enhance import init_df
 
                 self._df_model, self._df_state, _ = init_df()

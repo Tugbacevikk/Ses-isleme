@@ -4,7 +4,7 @@ from audio_analyzer.adapters.repository.postgres_repository import PostgresRepos
 from audio_analyzer.adapters.storage.in_memory_storage_adapter import (
     InMemoryStorageAdapter,
 )
-from audio_analyzer.domain.models import JobStatus
+from audio_analyzer.domain.models import JobStatus, OverlapSummary
 from audio_analyzer.services.job_service import JobService, sanitize_error_message
 
 
@@ -23,7 +23,9 @@ async def test_execute_job_failure_does_not_leak_traceback(in_memory_db):
 
     # Pipeline that raises a permanent error
     mock_pipeline = MagicMock()
-    mock_pipeline.process.side_effect = ValueError("Internal model failure in C:\\Secret\\Path\\model.py")
+    err = ValueError("Internal model failure in C:\\Secret\\Path\\model.py")
+    mock_pipeline.process.side_effect = err
+    mock_pipeline.process_bytes.side_effect = err
 
     job_service = JobService(storage=storage, repository=repository, pipeline=mock_pipeline)
 
@@ -48,7 +50,9 @@ async def test_execute_job_triggers_webhook_callback(in_memory_db):
     repository = PostgresRepository(session=in_memory_db)
 
     mock_pipeline = MagicMock()
-    mock_pipeline.process.return_value = ([], "tr", None)
+    ret = ([], "tr", OverlapSummary(supported=False))
+    mock_pipeline.process.return_value = ret
+    mock_pipeline.process_bytes.return_value = ret
 
     job_service = JobService(storage=storage, repository=repository, pipeline=mock_pipeline)
 
