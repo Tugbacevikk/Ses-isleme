@@ -51,7 +51,10 @@ async def test_full_job_service_pipeline_e2e(tmp_path, in_memory_db):
     job_service = JobService(storage=storage, repository=repository, pipeline=pipeline)
 
     # 2. İstemci Talebi (Ses Dosyası Yükleme & PENDING Görev Oluşturma)
-    mock_audio_bytes = b"RIFF\x00\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00"
+    import io, soundfile as sf, numpy as np
+    buf = io.BytesIO()
+    sf.write(buf, np.zeros(80000, dtype=np.int16), 16000, format="WAV", subtype="PCM_16")
+    mock_audio_bytes = buf.getvalue()
     job_id = await job_service.create_job(file_name="ornek_cagri.wav", file_bytes=mock_audio_bytes)
 
     record_pending = await repository.get_record_by_id(job_id)

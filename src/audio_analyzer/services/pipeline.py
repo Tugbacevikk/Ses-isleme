@@ -83,7 +83,7 @@ class AudioAnalysisPipeline:
         self.semantic_refiner = semantic_refiner or SemanticRefiner()
 
     def process(
-        self, audio_path: str
+        self, audio_path: str, num_speakers: int | None = None
     ) -> tuple[list[TranscriptUtterance], str | None, OverlapSummary]:
         """
         Ses dosyasını (MP3/WAV/FLAC vb.) analiz eder.
@@ -155,7 +155,7 @@ class AudioAnalysisPipeline:
             except Exception:
                 audio_duration = 0.0
 
-            return self._execute_pipeline(working_path, audio_duration)
+            return self._execute_pipeline(working_path, audio_duration, num_speakers=num_speakers)
         finally:
             for tmp_file in created_temp_files:
                 if Path(tmp_file).exists():
@@ -165,7 +165,7 @@ class AudioAnalysisPipeline:
                         logger.warning("Geçici ses dosyası temizleme uyarısı: %s", cleanup_err)
 
     def process_bytes(
-        self, file_bytes: bytes
+        self, file_bytes: bytes, num_speakers: int | None = None
     ) -> tuple[list[TranscriptUtterance], str | None, OverlapSummary]:
         """
         0-Disk I/O: Ses dosyasını doğrudan RAM bellek üzerinden işler.
@@ -212,15 +212,17 @@ class AudioAnalysisPipeline:
         # Pre-calculate audio duration directly from array before STT
         audio_duration = float(len(audio_array)) / 16000.0 if len(audio_array) > 0 else 0.0
 
-        return self._execute_pipeline(audio_array, audio_duration)
+        return self._execute_pipeline(audio_array, audio_duration, num_speakers=num_speakers)
 
     def _execute_pipeline(
-        self, audio_input: str | np.ndarray, audio_duration: float
+        self, audio_input: str | np.ndarray, audio_duration: float, num_speakers: int | None = None
     ) -> tuple[list[TranscriptUtterance], str | None, OverlapSummary]:
         """
         Ortak pipeline yürütme motoru. Hem dosya yolu hem NumPy dizisi ile çalışır.
-        STT öncesinde hesaplanan ses süresi ile diarization kararını verir.
+        STT öncesinde hesaplanan ses süresi ve konuşmacı sayısı ile diarization kararını verir.
         """
+        from audio_analyzer.domain.models import DiarizationSegment
+
         settings = get_settings()
         profile = settings.pipeline_profile
         min_diarize_sec = settings.pipeline_min_diarize_sec
@@ -241,7 +243,12 @@ class AudioAnalysisPipeline:
 
         # Diarization Kararı (STT ÖNCESİNDE KONTROL)
         should_diarize = True
-        if profile == "feedback" and audio_duration < min_diarize_sec:
+        is_single_speaker = num_speakers == 1
+
+        if is_single_speaker:
+            logger.info("num_speakers=1 belirtildi: Diarization motoru by-pass ediliyor (Tek konuşmacı kipleri).")
+            should_diarize = False
+        elif profile == "feedback" and audio_duration < min_diarize_sec:
             logger.info("Ses süresi (%.1f sn < %.1f sn), diarization atlanıyor.", audio_duration, min_diarize_sec)
             should_diarize = False
 
@@ -255,6 +262,9 @@ class AudioAnalysisPipeline:
                 t0 = time.monotonic()
                 diarization_segments = self.diarizer.diarize(audio_input)
                 STAGE_DURATION_HISTOGRAM.labels(stage="diarization").observe(time.monotonic() - t0)
+            elif is_single_speaker:
+                end_t = audio_duration if audio_duration > 0 else 1000.0
+                diarization_segments = [DiarizationSegment(speaker_id="SPEAKER_00", start_time=0.0, end_time=end_t)]
             else:
                 diarization_segments = []
         else:
@@ -277,6 +287,9 @@ class AudioAnalysisPipeline:
                     t0_diar = time.monotonic()
                     diarization_segments = future_diar.result()
                     STAGE_DURATION_HISTOGRAM.labels(stage="diarization").observe(time.monotonic() - t0_diar)
+                elif is_single_speaker:
+                    end_t = audio_duration if audio_duration > 0 else 1000.0
+                    diarization_segments = [DiarizationSegment(speaker_id="SPEAKER_00", start_time=0.0, end_time=end_t)]
                 else:
                     diarization_segments = []
 

@@ -63,7 +63,9 @@ async def verify_api_key(api_key: str | None = Depends(api_key_header)):
     return api_key
 
 
-async def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: bytes):
+async def run_pipeline_background(
+    job_id_str: str, file_name: str, file_bytes: bytes, num_speakers: int | None = None
+):
     """
     Arka plan asenkron worker fonksiyonu (Non-blocking HTTP 202 mimarisi).
     Redis Streams veya FastAPI BackgroundTasks için merkezi JobService.execute_job iş mantığını çağırır.
@@ -78,10 +80,9 @@ async def run_pipeline_background(job_id_str: str, file_name: str, file_bytes: b
                 repository=uow.repository,
                 session_factory=AsyncSessionLocal,
             )
-            await job_service.execute_job(record_uuid, file_bytes=file_bytes)
+            await job_service.execute_job(record_uuid, file_bytes=file_bytes, num_speakers=num_speakers)
     except Exception as ex:
         logger.error("Background task execution error: %s", ex, exc_info=True)
-
 
 
 # --- Schemas ---
@@ -129,6 +130,8 @@ async def upload_and_analyze_audio(
     file: UploadFile = File(...),
     callback_url: str | None = Form(None),
     external_id: str | None = Form(None),
+    speakers: int | None = Form(None),
+    num_speakers: int | None = Query(None),
     repository: ITranscriptRepository = Depends(get_repository),
     _api_key: str | None = Depends(verify_api_key),
 ):
@@ -136,7 +139,9 @@ async def upload_and_analyze_audio(
     Ses dosyasını yükler, validasyondan geçirir, PENDING durumuyla kaydeder
     ve analizi ASENKRON başlatır (HTTP 202 Accepted).
     Redis tabanlı Dağıtık Rate-limiting ve external_id İdempotency uygulanır.
+    'speakers=1' gönderilirse diarization bypass edilerek analiz süresi düşürülür.
     """
+    target_speakers = speakers if speakers is not None else num_speakers
     await rate_limiter.check_rate_limit(request)
 
     if not file.filename:
@@ -211,7 +216,7 @@ async def upload_and_analyze_audio(
                 "UYARI: Production ortamında in-process BackgroundTasks kullanımı yüksek GPU/CPU yükünde HTTP sunucusunu kilitleyebilir. 'USE_REDIS_STREAM=true' yapılandırılması şiddetle önerilir (Job ID: %s).",
                 job_id
             )
-        background_tasks.add_task(run_pipeline_background, str(job_id), file.filename, file_bytes)
+        background_tasks.add_task(run_pipeline_background, str(job_id), file.filename, file_bytes, target_speakers)
 
 
     return JobCreateResponse(

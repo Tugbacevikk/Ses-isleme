@@ -44,23 +44,28 @@ def _build_pipeline() -> AudioAnalysisPipeline:
         )
 
     # 2. Diarization Engine (Pyannote 3.1 SOTA / SpeechBrain ECAPA Fallback)
+    from audio_analyzer.adapters.diarization.fallback_diarizer import FallbackDiarizer
+    from audio_analyzer.adapters.diarization.speechbrain_adapter import SpeechBrainECAPADiarizer
+
     diar_engine_name = settings.diarization_engine
+    fallback_diarizer = SpeechBrainECAPADiarizer(
+        device_config=device_config, num_speakers=settings.target_num_speakers
+    )
+
     if diar_engine_name == "pyannote":
         from audio_analyzer.adapters.diarization.pyannote_adapter import (
             PyannoteAudioAdapter,
         )
 
-        diarizer = PyannoteAudioAdapter(
+        primary_diarizer = PyannoteAudioAdapter(
             device_config=device_config, num_speakers=settings.target_num_speakers
         )
     else:
-        from audio_analyzer.adapters.diarization.speechbrain_adapter import (
-            SpeechBrainECAPADiarizer,
-        )
+        primary_diarizer = fallback_diarizer
+        fallback_diarizer = None
 
-        diarizer = SpeechBrainECAPADiarizer(
-            device_config=device_config, num_speakers=settings.target_num_speakers
-        )
+    fallbacks = [fallback_diarizer] if fallback_diarizer and fallback_diarizer != primary_diarizer else []
+    diarizer = FallbackDiarizer(primary_diarizer=primary_diarizer, fallback_diarizers=fallbacks)
 
     from audio_analyzer.adapters.audio.denoiser import DeepFilterDenoiser
     from audio_analyzer.adapters.audio.rust_dsp_adapter import RustAudioDSPProcessor
@@ -75,10 +80,11 @@ def _build_pipeline() -> AudioAnalysisPipeline:
         logger.info("Yapay Zeka modelleri (FasterWhisper & Pyannote.audio) belleğe yükleniyor...")
         if hasattr(stt_engine, "_lazy_load_model"):
             stt_engine._lazy_load_model()
-        if hasattr(diarizer, "_lazy_load_pipeline"):
-            diarizer._lazy_load_pipeline()
-        elif hasattr(diarizer, "_load_classifier"):
-            diarizer._load_classifier()
+        target_diar = diarizer.primary if hasattr(diarizer, "primary") else diarizer
+        if hasattr(target_diar, "_lazy_load_pipeline"):
+            target_diar._lazy_load_pipeline()
+        elif hasattr(target_diar, "_load_classifier"):
+            target_diar._load_classifier()
         logger.info("Yapay Zeka modelleri başarıyla yüklendi [HAZIR].")
     except Exception as warm_err:
         logger.warning("Model ön yükleme uyarısı: %s", warm_err)

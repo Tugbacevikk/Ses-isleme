@@ -93,16 +93,18 @@ class JobService:
             raise ex
 
     async def execute_job(
-        self, record_id: uuid.UUID, file_bytes: bytes | None = None
+        self, record_id: uuid.UUID, file_bytes: bytes | None = None, num_speakers: int | None = None
     ) -> bool:
         """
         Geriye dönük uyumluluk için boolean sonuç döndüren execute_job sarmalayıcısı.
         """
-        status_str, _, _ = await self.execute_job_detailed(record_id, file_bytes=file_bytes)
+        status_str, _, _ = await self.execute_job_detailed(
+            record_id, file_bytes=file_bytes, num_speakers=num_speakers
+        )
         return status_str in ("COMPLETED", "SKIPPED")
 
     async def execute_job_detailed(
-        self, record_id: uuid.UUID, file_bytes: bytes | None = None
+        self, record_id: uuid.UUID, file_bytes: bytes | None = None, num_speakers: int | None = None
     ) -> tuple[str, int, str | None]:
         """
         Arka plan worker'ı tarafından çağrılır.
@@ -178,7 +180,10 @@ class JobService:
 
             res = None
             if file_bytes and hasattr(self.pipeline, "process_bytes"):
-                res = await asyncio.to_thread(self.pipeline.process_bytes, file_bytes)
+                if num_speakers is not None:
+                    res = await asyncio.to_thread(self.pipeline.process_bytes, file_bytes, num_speakers=num_speakers)
+                else:
+                    res = await asyncio.to_thread(self.pipeline.process_bytes, file_bytes)
             else:
                 local_path = await asyncio.to_thread(self.storage.get_path, record.storage_uri)
                 temp_local_file = None
@@ -195,9 +200,14 @@ class JobService:
                         local_path = temp_path
                         temp_local_file = temp_path
 
-                    res = await asyncio.to_thread(
-                        self.pipeline.process, local_path
-                    )
+                    if num_speakers is not None:
+                        res = await asyncio.to_thread(
+                            self.pipeline.process, local_path, num_speakers=num_speakers
+                        )
+                    else:
+                        res = await asyncio.to_thread(
+                            self.pipeline.process, local_path
+                        )
                 finally:
                     if temp_local_file and os.path.exists(temp_local_file):
                         try:

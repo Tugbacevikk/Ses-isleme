@@ -54,6 +54,13 @@ WEBHOOK_DELIVERY_COUNTER = Counter(
     labelnames=["status"],
 )
 
+DIARIZATION_FALLBACK_COUNTER = Counter(
+    "audio_diarization_fallbacks_total",
+    "Diarization motoru fallback tetiklenme sayısı",
+    labelnames=["from_engine", "to_engine", "reason"],
+)
+
+
 
 async def update_dynamic_gauges():
     """Redis ve DB üzerinden dinamik kuyruk ve bekleyen iş metriklerini günceller."""
