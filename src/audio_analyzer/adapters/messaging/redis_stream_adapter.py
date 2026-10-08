@@ -53,6 +53,7 @@ class RedisStreamAdapter:
         job_id: str,
         file_name: str,
         callback_url: str | None = None,
+        num_speakers: int | None = None,
         max_len: int = 100000,
     ) -> str:
         """
@@ -64,6 +65,7 @@ class RedisStreamAdapter:
             "job_id": str(job_id),
             "file_name": str(file_name),
             "callback_url": str(callback_url) if callback_url else "",
+            "num_speakers": str(num_speakers) if num_speakers is not None else "",
         }
         msg_id = await client.xadd(
             name=self.stream_key,

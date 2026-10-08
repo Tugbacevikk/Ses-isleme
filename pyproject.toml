@@ -38,6 +38,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+pyannote = [
+    "pyannote.audio>=3.1.0",
+]
 denoise = [
     "deepfilternet>=0.5.0",
 ]

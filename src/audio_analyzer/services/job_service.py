@@ -59,6 +59,7 @@ class JobService:
         file_bytes: bytes,
         callback_url: str | None = None,
         external_id: str | None = None,
+        num_speakers: int | None = None,
     ) -> uuid.UUID:
         """
         Yeni bir analiz görevi oluşturur (status='PENDING').
@@ -80,6 +81,7 @@ class JobService:
             file_name=file_name,
             status=JobStatus.PENDING,
             callback_url=callback_url,
+            num_speakers=num_speakers,
         )
         try:
             saved = await self.repo.save_record(record)
@@ -131,6 +133,9 @@ class JobService:
         if not claimed or not record:
             logger.info("Job %s başka bir worker tarafından işleniyor veya zaman aşımına uğramamış, atlanıyor.", record_id)
             return "SKIPPED", 0, None
+
+        if num_speakers is None and getattr(record, "num_speakers", None) is not None:
+            num_speakers = record.num_speakers
 
         # Claim token (fencing token)
         claim_token = getattr(record, "processing_started_at", None)

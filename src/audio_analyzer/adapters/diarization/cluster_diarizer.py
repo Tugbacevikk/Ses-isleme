@@ -147,7 +147,7 @@ class LocalSpectralClusterDiarizer(IDiarizer):
 
         return labels
 
-    def diarize(self, audio_path: str) -> list[DiarizationSegment]:
+    def diarize(self, audio_path: str, num_speakers: int | None = None) -> list[DiarizationSegment]:
         try:
             import os
             import wave

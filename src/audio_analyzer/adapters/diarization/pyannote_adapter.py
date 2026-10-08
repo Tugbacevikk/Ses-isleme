@@ -58,7 +58,7 @@ class PyannoteAudioAdapter(IDiarizer):
                 )
                 self._pipeline = None
 
-    def diarize(self, audio_input: object) -> list[DiarizationSegment]:
+    def diarize(self, audio_input: object, num_speakers: int | None = None) -> list[DiarizationSegment]:
         self._lazy_load_pipeline()
 
         if self._pipeline is None:
@@ -84,8 +84,9 @@ class PyannoteAudioAdapter(IDiarizer):
                 audio_payload = str(audio_input)
 
             kwargs = {}
-            if self.num_speakers:
-                kwargs["num_speakers"] = self.num_speakers
+            target_num_speakers = num_speakers if num_speakers is not None else self.num_speakers
+            if target_num_speakers:
+                kwargs["num_speakers"] = target_num_speakers
 
             diarization_out = self._pipeline(audio_payload, **kwargs)
             annotation = getattr(diarization_out, "speaker_diarization", diarization_out)

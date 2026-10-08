@@ -65,6 +65,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
             processing_started_at=record.processing_started_at,
             last_error_at=record.last_error_at,
             overlap_summary=overlap_str,
+            num_speakers=record.num_speakers,
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
@@ -660,6 +661,7 @@ class PostgresRepository(ITranscriptRepository, IWebhookOutboxRepository):
             processing_started_at=getattr(orm, "processing_started_at", None),
             last_error_at=getattr(orm, "last_error_at", None),
             overlap_summary=overlap_summary_domain,
+            num_speakers=getattr(orm, "num_speakers", None),
             created_at=orm.created_at,
             updated_at=orm.updated_at,
             utterances=domain_utterances,

@@ -130,8 +130,8 @@ async def upload_and_analyze_audio(
     file: UploadFile = File(...),
     callback_url: str | None = Form(None),
     external_id: str | None = Form(None),
-    speakers: int | None = Form(None),
-    num_speakers: int | None = Query(None),
+    num_speakers: int | None = Form(None, ge=1, le=10, description="Beklenen konuşmacı sayısı (1-10). 1 verilirse diarization baypas edilir."),
+    speakers: int | None = Form(None, ge=1, le=10, description="Geriye dönük uyumluluk takma adı."),
     repository: ITranscriptRepository = Depends(get_repository),
     _api_key: str | None = Depends(verify_api_key),
 ):
@@ -139,9 +139,12 @@ async def upload_and_analyze_audio(
     Ses dosyasını yükler, validasyondan geçirir, PENDING durumuyla kaydeder
     ve analizi ASENKRON başlatır (HTTP 202 Accepted).
     Redis tabanlı Dağıtık Rate-limiting ve external_id İdempotency uygulanır.
-    'speakers=1' gönderilirse diarization bypass edilerek analiz süresi düşürülür.
+    'num_speakers=1' gönderilirse diarization bypass edilerek analiz süresi düşürülür.
     """
-    target_speakers = speakers if speakers is not None else num_speakers
+    target_speakers = num_speakers if num_speakers is not None else speakers
+    if target_speakers is not None and (target_speakers < 1 or target_speakers > 10):
+        raise HTTPException(status_code=400, detail="Konuşmacı sayısı (num_speakers) 1 ile 10 arasında olmalıdır.")
+
     await rate_limiter.check_rate_limit(request)
 
     if not file.filename:
@@ -189,7 +192,11 @@ async def upload_and_analyze_audio(
     storage = get_storage_adapter()
     job_service = JobService(storage=storage, repository=repository)
     job_id = await job_service.create_job(
-        file_name=file.filename, file_bytes=file_bytes, callback_url=callback_url, external_id=external_id
+        file_name=file.filename,
+        file_bytes=file_bytes,
+        callback_url=callback_url,
+        external_id=external_id,
+        num_speakers=target_speakers,
     )
 
     use_redis_stream = os.getenv("USE_REDIS_STREAM", "false").lower() == "true" or os.getenv("USE_REDIS_QUEUE", "false").lower() == "true"
@@ -198,7 +205,10 @@ async def upload_and_analyze_audio(
         try:
             stream_adapter = RedisStreamAdapter()
             await stream_adapter.publish_job(
-                job_id=str(job_id), file_name=file.filename, callback_url=callback_url
+                job_id=str(job_id),
+                file_name=file.filename,
+                callback_url=callback_url,
+                num_speakers=target_speakers,
             )
 
             logger.info("Görüşme görevi %s başarıyla Redis Stream (XADD) akışına fırlatıldı.", job_id)

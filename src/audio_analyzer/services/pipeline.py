@@ -26,6 +26,8 @@ from audio_analyzer.services.semantic_refiner import SemanticRefiner
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_UNBOUNDED_AUDIO_DURATION: float = 1000.0
+
 
 def estimate_snr_db(audio_array: np.ndarray, sample_rate: int = 16000) -> float:
     """
@@ -260,11 +262,10 @@ class AudioAnalysisPipeline:
 
             if should_diarize:
                 t0 = time.monotonic()
-                diarization_segments = self.diarizer.diarize(audio_input)
+                diarization_segments = self._call_diarizer(audio_input, num_speakers=num_speakers)
                 STAGE_DURATION_HISTOGRAM.labels(stage="diarization").observe(time.monotonic() - t0)
             elif is_single_speaker:
-                end_t = audio_duration if audio_duration > 0 else 1000.0
-                diarization_segments = [DiarizationSegment(speaker_id="SPEAKER_00", start_time=0.0, end_time=end_t)]
+                diarization_segments = self._create_single_speaker_segments(audio_duration)
             else:
                 diarization_segments = []
         else:
@@ -278,7 +279,7 @@ class AudioAnalysisPipeline:
 
                 future_diar = None
                 if should_diarize:
-                    future_diar = executor.submit(self.diarizer.diarize, audio_input)
+                    future_diar = executor.submit(self._call_diarizer, audio_input, num_speakers)
 
                 words, detected_language = future_stt.result()
                 STAGE_DURATION_HISTOGRAM.labels(stage="stt").observe(time.monotonic() - t0_stt)
@@ -288,8 +289,7 @@ class AudioAnalysisPipeline:
                     diarization_segments = future_diar.result()
                     STAGE_DURATION_HISTOGRAM.labels(stage="diarization").observe(time.monotonic() - t0_diar)
                 elif is_single_speaker:
-                    end_t = audio_duration if audio_duration > 0 else 1000.0
-                    diarization_segments = [DiarizationSegment(speaker_id="SPEAKER_00", start_time=0.0, end_time=end_t)]
+                    diarization_segments = self._create_single_speaker_segments(audio_duration)
                 else:
                     diarization_segments = []
 
@@ -343,3 +343,20 @@ class AudioAnalysisPipeline:
                 filtered_words.append(word)
 
         return filtered_words
+
+    def _call_diarizer(self, audio_input: str | np.ndarray, num_speakers: int | None = None) -> list:
+        """IDiarizer.diarize adaptörünü çağırır. num_speakers imza uyumunu kontrol eder."""
+        import inspect
+        try:
+            sig = inspect.signature(self.diarizer.diarize)
+            if "num_speakers" in sig.parameters:
+                return self.diarizer.diarize(audio_input, num_speakers=num_speakers)
+        except Exception:
+            pass
+        return self.diarizer.diarize(audio_input)
+
+    def _create_single_speaker_segments(self, audio_duration: float) -> list:
+        """Tek konuşmacılı sesler için SPEAKER_00 kapsama segmenti üretir."""
+        from audio_analyzer.domain.models import DiarizationSegment
+        end_t = audio_duration if audio_duration > 0 else DEFAULT_UNBOUNDED_AUDIO_DURATION
+        return [DiarizationSegment(speaker_id="SPEAKER_00", start_time=0.0, end_time=end_t)]

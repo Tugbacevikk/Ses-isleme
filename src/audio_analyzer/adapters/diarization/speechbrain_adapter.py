@@ -81,7 +81,7 @@ class SpeechBrainECAPADiarizer(IDiarizer):
                     run_opts={"device": self.device_config.device},
                 )
 
-    def diarize(self, audio_input: str | np.ndarray) -> list[DiarizationSegment]:
+    def diarize(self, audio_input: str | np.ndarray, num_speakers: int | None = None) -> list[DiarizationSegment]:
         try:
             self._load_classifier()
             from scipy.signal import medfilt
@@ -183,7 +183,7 @@ class SpeechBrainECAPADiarizer(IDiarizer):
             if len(unit_embs) == 1:
                 raw_valid_labels = np.zeros(1, dtype=int)
             else:
-                effective_num_speakers = self.num_speakers
+                effective_num_speakers = num_speakers if num_speakers is not None else self.num_speakers
 
                 if effective_num_speakers is not None:
                     n_spk = min(effective_num_speakers, len(unit_embs))

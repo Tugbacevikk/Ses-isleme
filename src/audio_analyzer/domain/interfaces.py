@@ -201,7 +201,7 @@ class IDiarizer(ABC):
     """Speaker Diarization Motor Arayüzü (PyAnnote vb.)."""
 
     @abstractmethod
-    def diarize(self, audio_path: str) -> list[DiarizationSegment]:
+    def diarize(self, audio_path: str, num_speakers: int | None = None) -> list[DiarizationSegment]:
         """Ses dosyasını işleyip konuşmacı zaman aralıklarını döner."""
 
 

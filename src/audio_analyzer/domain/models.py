@@ -126,6 +126,7 @@ class AudioRecord(BaseModel):
     processing_started_at: datetime | None = None
     last_error_at: datetime | None = None
     overlap_summary: OverlapSummary | None = None
+    num_speakers: int | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     utterances: list[TranscriptUtterance] = Field(default_factory=list)
